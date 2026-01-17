@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import PromptStudio from './components/PromptStudio';
+import ArticleEditor from './components/ArticleEditor';
 
 // Types
-type Page = 'dashboard' | 'articles' | 'generate' | 'research' | 'tree' | 'publish';
+type Page = 'dashboard' | 'articles' | 'generate' | 'research' | 'tree' | 'publish' | 'editor';
 type Status = 'ready' | 'draft' | 'pending';
 
 interface Article {
@@ -151,7 +152,7 @@ export default function Home() {
                       <td><span className={`status-badge ${article.status}`}>{article.status}</span></td>
                       <td>{article.words || '-'}</td>
                       <td>
-                        <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }}>Edit</button>
+                        <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setActivePage('editor')}>Edit</button>
                       </td>
                     </tr>
                   ))}
@@ -159,6 +160,11 @@ export default function Home() {
               </table>
             </div>
           </>
+        )}
+
+        {/* Editor */}
+        {activePage === 'editor' && (
+          <ArticleEditor onBack={() => setActivePage('articles')} />
         )}
 
         {/* Generate */}
