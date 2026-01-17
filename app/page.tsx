@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import PromptStudio from './components/PromptStudio';
 import ArticleEditor from './components/ArticleEditor';
+import KeywordTracker from './components/KeywordTracker';
 
 // Types
-type Page = 'dashboard' | 'articles' | 'generate' | 'research' | 'tree' | 'publish' | 'editor';
+type Page = 'dashboard' | 'articles' | 'generate' | 'research' | 'tree' | 'publish' | 'editor' | 'keywords';
 type Status = 'ready' | 'draft' | 'pending';
 
 interface Article {
@@ -47,6 +48,9 @@ export default function Home() {
           </button>
           <button className={`nav-item ${activePage === 'tree' ? 'active' : ''}`} onClick={() => setActivePage('tree')}>
             <span className="nav-icon">🌳</span> Blog Tree
+          </button>
+          <button className={`nav-item ${activePage === 'keywords' ? 'active' : ''}`} onClick={() => setActivePage('keywords')}>
+            <span className="nav-icon">🔑</span> Keywords
           </button>
           <div style={{ margin: '12px 0', borderTop: '1px solid var(--glass-border)' }}></div>
           <button className={`nav-item ${activePage === 'publish' ? 'active' : ''}`} onClick={() => setActivePage('publish')}>
@@ -319,6 +323,11 @@ export default function Home() {
               </div>
             </div>
           </>
+        )}
+
+        {/* Keywords */}
+        {activePage === 'keywords' && (
+          <KeywordTracker />
         )}
 
         {/* Publish Hub */}
