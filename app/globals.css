@@ -501,6 +501,14 @@ body {
     z-index: 9998;
     inset: 0;
     backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  .sidebar-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .main-content {
