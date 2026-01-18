@@ -1,433 +1,204 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
-import PromptStudio from './components/PromptStudio';
-import ArticleEditor from './components/ArticleEditor';
-import KeywordTracker from './components/KeywordTracker';
-import ResearchViewer from './components/ResearchViewer';
+import { getDashboardStats } from '@/lib/supabase';
+import { PromptData } from '@/lib/types';
+
+// Components
+import BlogTree from './components/BlogTree';
 import ResearchWorkspace from './components/ResearchWorkspace';
+import PromptStudio from './components/PromptStudio';
+import ClaudeOutput from './components/ClaudeOutput';
+import PublishHub from './components/PublishHub';
+import KeywordTracker from './components/KeywordTracker';
 
-
-// Types
-type Page = 'dashboard' | 'articles' | 'generate' | 'research' | 'tree' | 'publish' | 'editor' | 'keywords' | 'workspace';
-type Status = 'ready' | 'draft' | 'pending';
-
-interface Article {
-  id: number;
-  title: string;
-  brand: string;
-  model: string;
-  status: Status;
-  words: number;
-}
-
-// Sample data
-const sampleArticles: Article[] = [
-  { id: 1, title: 'S19 Pro Hashboard Not Detected', brand: 'Antminer', model: 'S19 Pro', status: 'ready', words: 2100 },
-  { id: 2, title: 'M30S Overheating Issues', brand: 'WhatsMiner', model: 'M30S', status: 'draft', words: 1800 },
-  { id: 3, title: 'S21 Low Hashrate Fix', brand: 'Antminer', model: 'S21', status: 'pending', words: 0 },
-];
+// --- Types ---
+type Page = 'dashboard' | 'tree' | 'research' | 'generate' | 'claude' | 'articles' | 'publish' | 'keywords';
 
 export default function Home() {
-  const [activePage, setActivePage] = useState<Page>('dashboard');
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isAuthChecking, setIsAuthChecking] = useState(true);
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+    const [activePage, setActivePage] = useState<Page>('dashboard');
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Check login status on mount (client-only)
-  useEffect(() => {
-    const loggedIn = localStorage.getItem('isLoggedIn');
-    if (loggedIn === 'true') {
-      setIsLoggedIn(true);
-    }
-    setIsAuthChecking(false);
-  }, []);
+    // Data Passing State (Research -> Prompt)
+    const [promptData, setPromptData] = useState<PromptData | null>(null);
 
-  // Show loading state while checking auth to prevent hydration mismatch
-  if (isAuthChecking) {
+    // Dashboard Stats
+    const [stats, setStats] = useState({
+        articlesCreated: 0,
+        pendingTopics: 0,
+        readyToPublish: 0,
+        published: 0
+    });
+
+    // Fetch stats on mount
+    useEffect(() => {
+        getDashboardStats().then(setStats);
+    }, []);
+
+    // --- Handlers ---
+    const navigateTo = (page: Page) => {
+        setActivePage(page);
+        setMobileMenuOpen(false);
+    };
+
+    const handlePushToPrompt = (data: PromptData) => {
+        setPromptData(data);
+        setActivePage('generate');
+    };
+
+    const menuItems = [
+        { id: 'dashboard', icon: '🏠', label: 'Dashboard' },
+        { id: 'tree', icon: '🌳', label: 'Blog Tree' },
+        { id: 'research', icon: '🔬', label: 'Research' },
+        { id: 'generate', icon: '✨', label: 'Generate Prompt' },
+        { id: 'claude', icon: '📋', label: 'Claude Output' },
+        { id: 'articles', icon: '📝', label: 'Articles' },
+        { id: 'publish', icon: '🚀', label: 'Publish Hub' },
+        { id: 'keywords', icon: '🔑', label: 'Keywords' },
+    ];
+
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f3f6fc', color: '#64748b' }}>
-        Loading...
-      </div>
-    );
-  }
+        <div className="app-container">
+            {/* Mobile Toggle */}
+            <div className="md:hidden fixed top-4 right-4 z-50">
+                <button
+                    className="bg-slate-800 text-white p-2 rounded shadow-lg"
+                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                >
+                    {mobileMenuOpen ? '✕' : '☰'}
+                </button>
+            </div>
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const validPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || 'Palan@744';
+            {/* Sidebar */}
+            <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
+                <div className="brand-section">
+                    <span>⚡ ASIC ADMIN</span>
+                </div>
+                <nav className="nav-menu">
+                    {menuItems.map(item => (
+                        <button
+                            key={item.id}
+                            className={`nav-item ${activePage === item.id ? 'active' : ''}`}
+                            onClick={() => navigateTo(item.id as Page)}
+                        >
+                            <span className="nav-icon">{item.icon}</span>
+                            {item.label}
+                        </button>
+                    ))}
+                </nav>
+                <div className="p-4 border-t border-slate-700">
+                    <div className="text-xs text-slate-400 mb-2">System Status</div>
+                    <div className="flex items-center gap-2 text-xs text-green-400">
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                        Online v2.1
+                    </div>
+                </div>
+            </aside>
 
-    if (password === validPassword) {
-      setIsLoggedIn(true);
-      localStorage.setItem('isLoggedIn', 'true');
-      setError('');
-    } else {
-      setPassword('');
-      setError('Invalid password');
-    }
-  };
+            {/* Main Content Area */}
+            <main className="main-content">
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem('isLoggedIn');
-  };
+                {/* Page Header */}
+                <div className="page-header">
+                    <h1 className="page-title">
+                        {menuItems.find(m => m.id === activePage)?.label}
+                    </h1>
+                </div>
 
-  if (!isLoggedIn) {
-    return (
-      <div style={{
-        height: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#0a0a0f',
-        color: 'white'
-      }}>
-        <div className="card" style={{ width: '100%', maxWidth: '400px', padding: '40px' }}>
-          <h2 style={{ textAlign: 'center', marginBottom: '24px', fontSize: '1.5rem' }}>🔒 Admin Access</h2>
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="Enter Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-            />
-            {error && <div style={{ color: 'var(--danger)', fontSize: '0.9rem', textAlign: 'center' }}>{error}</div>}
-            <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }}>Login</button>
-          </form>
-          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Default: Palan@744
-          </div>
+                {/* Content Render */}
+
+                {activePage === 'dashboard' && (
+                    <div className="flex flex-col gap-6">
+                        {/* Stats Grid */}
+                        <div className="grid-2 md:grid-4">
+                            <div className="card border-l-4 border-l-blue-500">
+                                <div className="text-sm text-slate-500">Articles Created</div>
+                                <div className="text-3xl font-bold mt-1">{stats.articlesCreated}</div>
+                            </div>
+                            <div className="card border-l-4 border-l-amber-500">
+                                <div className="text-sm text-slate-500">Pending Topics</div>
+                                <div className="text-3xl font-bold mt-1">{stats.pendingTopics}</div>
+                            </div>
+                            <div className="card border-l-4 border-l-purple-500">
+                                <div className="text-sm text-slate-500">Ready to Publish</div>
+                                <div className="text-3xl font-bold mt-1">{stats.readyToPublish}</div>
+                            </div>
+                            <div className="card border-l-4 border-l-green-500">
+                                <div className="text-sm text-slate-500">Published Live</div>
+                                <div className="text-3xl font-bold mt-1">{stats.published}</div>
+                            </div>
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div className="card">
+                                <h3 className="card-title mb-4">Quick Navigation</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button className="btn btn-secondary text-left" onClick={() => navigateTo('research')}>
+                                        🔬 Start Research
+                                    </button>
+                                    <button className="btn btn-secondary text-left" onClick={() => navigateTo('publish')}>
+                                        🚀 Scheduled Posts
+                                    </button>
+                                    <button className="btn btn-secondary text-left" onClick={() => navigateTo('keywords')}>
+                                        🔑 Review Keywords
+                                    </button>
+                                    <button className="btn btn-secondary text-left" onClick={() => navigateTo('claude')}>
+                                        📋 Paste Article
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="card bg-slate-50 border-dashed">
+                                <h3 className="card-title text-slate-400">System Activity</h3>
+                                <div className="mt-4 space-y-3">
+                                    <div className="text-sm text-slate-500 flex gap-2">
+                                        <span>🕒 2m ago</span>
+                                        <span>Scraper updated for &quot;S19 Pro&quot;</span>
+                                    </div>
+                                    <div className="text-sm text-slate-500 flex gap-2">
+                                        <span>🕒 15m ago</span>
+                                        <span>New keyword &quot;M50s error&quot; added</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activePage === 'tree' && (
+                    <BlogTree onSelectTopic={(t) => {
+                        setPromptData({ topic: t }); // Pre-fill topic
+                        navigateTo('research');
+                    }} />
+                )}
+
+                {activePage === 'research' && (
+                    <ResearchWorkspace
+                        initialTopic={promptData?.topic}
+                        onNavigateToPrompt={handlePushToPrompt}
+                    />
+                )}
+
+                {activePage === 'generate' && (
+                    <PromptStudio initialData={promptData} />
+                )}
+
+                {activePage === 'claude' && <ClaudeOutput />}
+
+                {activePage === 'articles' && (
+                    <div className="card text-center py-20 text-slate-400">
+                        <span className="text-4xl block mb-4">📝</span>
+                        <p>Articles Manager is under construction.</p>
+                        <button className="btn btn-primary mt-4" onClick={() => navigateTo('claude')}>Add New Article</button>
+                    </div>
+                )}
+
+                {activePage === 'publish' && <PublishHub />}
+
+                {activePage === 'keywords' && <KeywordTracker />}
+
+            </main>
         </div>
-      </div>
     );
-  }
-
-  return (
-    <div className="app-container">
-      {/* Mobile Menu Toggle */}
-      <button
-        className="mobile-menu-toggle"
-        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-      >
-        {isMobileMenuOpen ? '✕' : '☰'}
-      </button>
-
-      {/* Sidebar Overlay */}
-      <div
-        className={`sidebar-overlay ${isMobileMenuOpen ? 'visible' : ''}`}
-        onClick={() => setIsMobileMenuOpen(false)}
-      ></div>
-
-      {/* Sidebar */}
-      <aside className={`sidebar ${isMobileMenuOpen ? 'open' : ''}`}>
-        <div className="sidebar-logo" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>⚡ ASICREPAIR ADMIN</span>
-        </div>
-        <nav className="nav-menu">
-          <button className={`nav-item ${activePage === 'dashboard' ? 'active' : ''}`} onClick={() => { setActivePage('dashboard'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">🏠</span> Dashboard
-          </button>
-          <button className={`nav-item ${activePage === 'articles' ? 'active' : ''}`} onClick={() => { setActivePage('articles'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">📝</span> Articles
-          </button>
-          <button className={`nav-item ${activePage === 'generate' ? 'active' : ''}`} onClick={() => { setActivePage('generate'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">✨</span> Generate
-          </button>
-          <button className={`nav-item ${activePage === 'workspace' ? 'active' : ''}`} onClick={() => { setActivePage('workspace'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">🔄</span> Workflow
-          </button>
-          <button className={`nav-item ${activePage === 'research' ? 'active' : ''}`} onClick={() => { setActivePage('research'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">🔬</span> Research
-          </button>
-          <button className={`nav-item ${activePage === 'tree' ? 'active' : ''}`} onClick={() => { setActivePage('tree'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">🌳</span> Blog Tree
-          </button>
-          <button className={`nav-item ${activePage === 'keywords' ? 'active' : ''}`} onClick={() => { setActivePage('keywords'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">🔑</span> Keywords
-          </button>
-          <div style={{ margin: '12px 0', borderTop: '1px solid var(--glass-border)' }}></div>
-          <button className={`nav-item ${activePage === 'publish' ? 'active' : ''}`} onClick={() => { setActivePage('publish'); setIsMobileMenuOpen(false); }}>
-            <span className="nav-icon">🚀</span> Publish Hub
-          </button>
-
-          <div style={{ flex: 1 }}></div>
-
-          <button className="nav-item" onClick={handleLogout} style={{ marginTop: 'auto', color: 'var(--danger)' }}>
-            <span className="nav-icon">🚪</span> Logout
-          </button>
-        </nav>
-      </aside>
-
-      {/* Main Content */}
-      <main className="main-content">
-        {/* Dashboard */}
-        {activePage === 'dashboard' && (
-          <>
-            <div className="page-header">
-              <h1 className="page-title">🏠 Dashboard</h1>
-            </div>
-
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-value">18</div>
-                <div className="stat-label">Articles Created</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">62</div>
-                <div className="stat-label">Pending Topics</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">12</div>
-                <div className="stat-label">Ready to Publish</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">0</div>
-                <div className="stat-label">Published</div>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-header">
-                <h3 className="card-title">📊 Coverage by Brand</h3>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>Antminer</span>
-                    <span>60% (24/40)</span>
-                  </div>
-                  <div className="progress-bar"><div className="progress-fill" style={{ width: '60%' }}></div></div>
-                </div>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>WhatsMiner</span>
-                    <span>35% (7/20)</span>
-                  </div>
-                  <div className="progress-bar"><div className="progress-fill" style={{ width: '35%' }}></div></div>
-                </div>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span>Avalon</span>
-                    <span>40% (2/5)</span>
-                  </div>
-                  <div className="progress-bar"><div className="progress-fill" style={{ width: '40%' }}></div></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-header">
-                <h3 className="card-title">🚀 Quick Actions</h3>
-              </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <button className="btn btn-primary" onClick={() => setActivePage('generate')}>🆕 Generate Article</button>
-                <button className="btn btn-secondary" onClick={() => setActivePage('articles')}>📋 View Pending</button>
-                <button className="btn btn-secondary" onClick={() => setActivePage('research')}>📥 Import Data</button>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Articles */}
-        {activePage === 'articles' && (
-          <>
-            <div className="page-header">
-              <h1 className="page-title">📝 Articles</h1>
-              <button className="btn btn-primary">+ New Article</button>
-            </div>
-
-            <div className="card">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Brand</th>
-                    <th>Status</th>
-                    <th>Words</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sampleArticles.map(article => (
-                    <tr key={article.id}>
-                      <td>{article.title}</td>
-                      <td>{article.brand}</td>
-                      <td><span className={`status-badge ${article.status}`}>{article.status}</span></td>
-                      <td>{article.words || '-'}</td>
-                      <td>
-                        <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} onClick={() => setActivePage('editor')}>Edit</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
-
-        {/* Editor */}
-        {activePage === 'editor' && (
-          <ArticleEditor onBack={() => setActivePage('articles')} />
-        )}
-
-        {/* Generate */}
-        {activePage === 'generate' && (
-          <PromptStudio />
-        )}
-
-        {/* Research */}
-        {activePage === 'research' && (
-          <>
-            <div className="page-header">
-              <h1 className="page-title">🔬 Research Data</h1>
-              <button className="btn btn-primary">📥 Import Data</button>
-            </div>
-            <ResearchViewer />
-          </>
-        )}
-
-        {/* Blog Tree */}
-        {activePage === 'tree' && (
-          <>
-            <div className="page-header">
-              <h1 className="page-title">🌳 Blog Tree - Content Roadmap</h1>
-              <button className="btn btn-primary" onClick={() => setActivePage('generate')}>⚡ Generate Next Priority</button>
-            </div>
-
-            <div className="card" style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span>Phase 1 Progress</span>
-                <span>18/80 articles (23%)</span>
-              </div>
-              <div className="progress-bar"><div className="progress-fill" style={{ width: '23%' }}></div></div>
-            </div>
-
-            <div className="card">
-              <div className="tree-node phase">
-                <div className="node-header">
-                  <span>▼</span>
-                  <span>📂</span>
-                  <strong>PHASE 1: Model-Specific Articles</strong>
-                  <span className="node-progress">18/80</span>
-                </div>
-
-                <div className="tree-node">
-                  <div className="node-header">
-                    <span>▼</span>
-                    <span>🔴</span>
-                    <span>Hashboard Not Detected</span>
-                    <span className="node-progress">12/40</span>
-                  </div>
-
-                  <div className="tree-node">
-                    <div className="node-header">
-                      <span>▶</span>
-                      <span>⚡</span>
-                      <span>Antminer</span>
-                      <span className="node-progress">8/20</span>
-                    </div>
-                  </div>
-                  <div className="tree-node">
-                    <div className="node-header">
-                      <span>▶</span>
-                      <span>⚡</span>
-                      <span>WhatsMiner</span>
-                      <span className="node-progress">3/15</span>
-                    </div>
-                  </div>
-                  <div className="tree-node">
-                    <div className="node-header">
-                      <span>▶</span>
-                      <span>⚡</span>
-                      <span>Avalon</span>
-                      <span className="node-progress">1/5</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="tree-node">
-                  <div className="node-header">
-                    <span>▶</span>
-                    <span>🟡</span>
-                    <span>Overheating Issues</span>
-                    <span className="node-progress">4/40</span>
-                  </div>
-                </div>
-
-                <div className="tree-node">
-                  <div className="node-header">
-                    <span>▶</span>
-                    <span>🟠</span>
-                    <span>Low Hashrate</span>
-                    <span className="node-progress">2/40</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="tree-node phase">
-                <div className="node-header">
-                  <span>▶</span>
-                  <span>📂</span>
-                  <strong>PHASE 2: Repair Insights</strong>
-                  <span className="node-progress">0/30</span>
-                </div>
-              </div>
-
-              <div className="tree-node phase">
-                <div className="node-header">
-                  <span>▶</span>
-                  <span>📂</span>
-                  <strong>PHASE 3: Seasonal Content</strong>
-                  <span className="node-progress">0/20</span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', display: 'flex', gap: '24px' }}>
-                <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: 'var(--success)', marginRight: '6px' }}></span> Ready</span>
-                <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: 'var(--warning)', marginRight: '6px' }}></span> Draft</span>
-                <span><span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: 'var(--text-muted)', marginRight: '6px' }}></span> Pending</span>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Keywords */}
-        {activePage === 'keywords' && (
-          <KeywordTracker />
-        )}
-
-        {/* Workflow Workspace */}
-        {activePage === 'workspace' && (
-          <>
-            <div className="page-header">
-              <h1 className="page-title">🔄 Research Workflow</h1>
-            </div>
-            <ResearchWorkspace />
-          </>
-        )}
-
-        {/* Publish Hub */}
-        {activePage === 'publish' && (
-          <>
-            <div className="page-header">
-              <h1 className="page-title">🚀 Publish Hub</h1>
-            </div>
-
-            <div className="card">
-              <div className="card-header">
-                <h3 className="card-title">Ready to Publish (12)</h3>
-                <button className="btn btn-primary">Publish All</button>
-              </div>
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                Select articles to export or publish to your website.
-              </div>
-            </div>
-          </>
-        )}
-      </main>
-    </div>
-  );
 }

@@ -1,283 +1,116 @@
+
 'use client';
-import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+import { useState } from 'react';
+import ResearchViewer from './ResearchViewer';
+import { SearchResult } from '@/lib/types';
 
-interface Topic {
-    id: number;
-    title: string;
-    category: string;
-    status: string;
-    priority: number;
+interface ResearchWorkspaceProps {
+    initialTopic?: string;
+    onNavigateToPrompt?: (data: { topic: string, results: SearchResult[], aiSummary: string }) => void;
 }
 
-interface ScrapedResult {
-    title: string;
-    url: string;
-    snippet: string;
-}
+export default function ResearchWorkspace({ initialTopic = '', onNavigateToPrompt }: ResearchWorkspaceProps) {
+    const [topic, setTopic] = useState(initialTopic);
+    const [loading, setLoading] = useState(false);
+    const [results, setResults] = useState<SearchResult[]>([]);
+    const [aiSummary, setAiSummary] = useState('');
 
-export default function ResearchWorkspace() {
-    // Topics State
-    const [topics, setTopics] = useState<Topic[]>([]);
-    const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null);
-    const [newTopicInput, setNewTopicInput] = useState('');
-
-    // Workflow State
-    const [step, setStep] = useState<'select' | 'research' | 'generate' | 'copy'>('select');
-    const [scrapedResults, setScrapedResults] = useState<ScrapedResult[]>([]);
-    const [generatedPrompt, setGeneratedPrompt] = useState('');
-
-    // Loading States
-    const [isSearching, setIsSearching] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [copied, setCopied] = useState(false);
-
-    useEffect(() => {
-        loadTopics();
-    }, []);
-
-    const loadTopics = async () => {
-        if (!supabase) {
-            // Use sample data if Supabase not configured
-            setTopics([
-                { id: 1, title: 'S19 Pro Hashboard Not Detected', category: 'Antminer', status: 'pending', priority: 1 },
-                { id: 2, title: 'M30S Overheating Solutions', category: 'WhatsMiner', status: 'pending', priority: 2 },
-                { id: 3, title: 'Avalon A1246 PSU Replacement', category: 'Avalon', status: 'pending', priority: 3 },
-            ]);
-            return;
-        }
-
-        const { data } = await supabase.from('topics').select('*').order('priority', { ascending: false });
-        if (data) setTopics(data);
-    };
-
-    const addTopic = async () => {
-        if (!newTopicInput.trim()) return;
-
-        if (supabase) {
-            await supabase.from('topics').insert({ title: newTopicInput, status: 'pending' });
-            loadTopics();
-        } else {
-            setTopics(prev => [...prev, { id: Date.now(), title: newTopicInput, category: '', status: 'pending', priority: 0 }]);
-        }
-        setNewTopicInput('');
-    };
-
-    const selectTopic = (topic: Topic) => {
-        setSelectedTopic(topic);
-        setStep('research');
-        setScrapedResults([]);
-        setGeneratedPrompt('');
-    };
-
-    const startResearch = async () => {
-        if (!selectedTopic) return;
-        setIsSearching(true);
-
+    const handleSearch = async () => {
+        if (!topic) return;
+        setLoading(true);
         try {
             const res = await fetch('/api/scraper/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: selectedTopic.title + ' repair guide troubleshooting', maxResults: 8 })
+                body: JSON.stringify({ query: topic }),
             });
 
             const data = await res.json();
-            if (data.results) {
-                setScrapedResults(data.results);
-                setStep('generate');
+            if (data.success) {
+                setResults(data.results || []);
+                setAiSummary("AI Summary functionality connected to API.");
             }
-        } catch (err) {
-            console.error(err);
-            alert('Research failed. Try again.');
+        } catch (e) {
+            console.error('Search failed', e);
         } finally {
-            setIsSearching(false);
+            setLoading(false);
         }
-    };
-
-    const generatePrompt = async () => {
-        if (!selectedTopic) return;
-        setIsGenerating(true);
-
-        try {
-            const res = await fetch('/api/prompt/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    topic: selectedTopic.title,
-                    scrapedData: scrapedResults
-                })
-            });
-
-            const data = await res.json();
-            if (data.prompt) {
-                setGeneratedPrompt(data.prompt);
-                setStep('copy');
-            }
-        } catch (err) {
-            console.error(err);
-            alert('Prompt generation failed. Try again.');
-        } finally {
-            setIsGenerating(false);
-        }
-    };
-
-    const copyToClipboard = async () => {
-        await navigator.clipboard.writeText(generatedPrompt);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    const resetWorkflow = () => {
-        setSelectedTopic(null);
-        setStep('select');
-        setScrapedResults([]);
-        setGeneratedPrompt('');
     };
 
     return (
-        <div style={{ display: 'flex', gap: '24px', height: 'calc(100vh - 100px)' }}>
-            {/* Left Panel: Topics Queue */}
-            <div className="card" style={{ width: '300px', display: 'flex', flexDirection: 'column' }}>
-                <h3 style={{ marginBottom: '16px' }}>📋 Topics Queue</h3>
-
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <div className="flex flex-col gap-6 h-full">
+            {/* Search Input Area */}
+            <div className="card">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Research Topic</label>
+                <div className="flex gap-2">
                     <input
-                        className="form-input"
-                        placeholder="Add new topic..."
-                        value={newTopicInput}
-                        onChange={(e) => setNewTopicInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && addTopic()}
-                        style={{ flex: 1 }}
+                        type="text"
+                        className="form-input flex-1"
+                        placeholder="Enter topic (e.g., Antminer S19 Pro Hashboard Repair)"
+                        value={topic}
+                        onChange={(e) => setTopic(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     />
-                    <button className="btn btn-primary" onClick={addTopic}>+</button>
-                </div>
-
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                    {topics.map(topic => (
-                        <div
-                            key={topic.id}
-                            onClick={() => selectTopic(topic)}
-                            style={{
-                                padding: '12px',
-                                marginBottom: '8px',
-                                background: selectedTopic?.id === topic.id ? '#eff6ff' : 'white',
-                                border: selectedTopic?.id === topic.id ? '2px solid #4f46e5' : '1px solid #e2e8f0',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s'
-                            }}
-                        >
-                            <div style={{ fontWeight: 500 }}>{topic.title}</div>
-                            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                                {topic.category || 'Uncategorized'} • {topic.status}
-                            </div>
-                        </div>
-                    ))}
+                    <button
+                        className="btn btn-primary min-w-[120px]"
+                        onClick={handleSearch}
+                        disabled={loading}
+                    >
+                        {loading ? '🔍 Searching...' : '🔍 Search'}
+                    </button>
                 </div>
             </div>
 
-            {/* Right Panel: Research Workspace */}
-            <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                {!selectedTopic ? (
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '3rem', marginBottom: '16px' }}>👈</div>
-                            <div>Select a topic from the queue to start</div>
-                        </div>
+            <div className="grid md:grid-cols-3 gap-6 flex-1 min-h-0">
+                {/* Left Col: Results List */}
+                <div className="md:col-span-2 overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="font-bold text-slate-800">📊 Search Results ({results.length})</h3>
                     </div>
-                ) : (
-                    <>
-                        {/* Header */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
-                            <div>
-                                <h2 style={{ margin: 0 }}>🎯 {selectedTopic.title}</h2>
-                                <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '4px' }}>
-                                    Step {step === 'research' ? '1' : step === 'generate' ? '2' : '3'} of 3
-                                </div>
-                            </div>
-                            <button className="btn btn-secondary" onClick={resetWorkflow}>✕ Cancel</button>
+
+                    {results.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 border-2 border-dashed rounded-lg bg-slate-50">
+                            No results yet. Enter a topic above.
                         </div>
+                    ) : (
+                        <ResearchViewer results={results} />
+                    )}
+                </div>
 
-                        {/* Step 1: Research */}
-                        {step === 'research' && (
-                            <div style={{ flex: 1 }}>
-                                <h3>🕷️ Step 1: Web Research</h3>
-                                <p style={{ color: '#64748b' }}>Click below to search the web for relevant information about this topic.</p>
-
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={startResearch}
-                                    disabled={isSearching}
-                                    style={{ marginTop: '16px' }}
-                                >
-                                    {isSearching ? '🔍 Searching the web...' : '🔍 Start Web Research'}
-                                </button>
+                {/* Right Col: AI & Actions */}
+                <div className="flex flex-col gap-4">
+                    {/* AI Summary Card */}
+                    <div className="card bg-indigo-50 border-indigo-100">
+                        <h3 className="text-sm font-bold text-indigo-900 mb-2 flex items-center gap-2">
+                            🧠 AI Summary
+                        </h3>
+                        {aiSummary ? (
+                            <div className="text-sm text-indigo-800 leading-relaxed">
+                                {aiSummary}
+                            </div>
+                        ) : (
+                            <div className="text-sm text-indigo-400 italic">
+                                Run search to generate summary...
                             </div>
                         )}
+                    </div>
 
-                        {/* Step 2: Generate */}
-                        {step === 'generate' && (
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                <h3>📊 Research Results ({scrapedResults.length} sources)</h3>
-
-                                <div style={{ flex: 1, overflowY: 'auto', marginBottom: '16px', background: '#f8fafc', padding: '12px', borderRadius: '8px' }}>
-                                    {scrapedResults.map((result, i) => (
-                                        <div key={i} style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0' }}>
-                                            <div style={{ fontWeight: 500 }}>{i + 1}. {result.title}</div>
-                                            <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{result.snippet}</div>
-                                            <a href={result.url} target="_blank" style={{ fontSize: '0.75rem', color: '#4f46e5' }}>{result.url}</a>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={generatePrompt}
-                                    disabled={isGenerating}
-                                >
-                                    {isGenerating ? '🧠 Generating prompt...' : '🧠 Generate Claude Prompt'}
-                                </button>
-                            </div>
-                        )}
-
-                        {/* Step 3: Copy */}
-                        {step === 'copy' && (
-                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                <h3>✨ Claude-Ready Prompt</h3>
-
-                                <textarea
-                                    readOnly
-                                    value={generatedPrompt}
-                                    style={{
-                                        flex: 1,
-                                        padding: '16px',
-                                        fontFamily: 'monospace',
-                                        fontSize: '0.85rem',
-                                        border: '1px solid #e2e8f0',
-                                        borderRadius: '8px',
-                                        background: '#f8fafc',
-                                        resize: 'none',
-                                        marginBottom: '16px'
-                                    }}
-                                />
-
-                                <button
-                                    className="btn btn-primary"
-                                    onClick={copyToClipboard}
-                                    style={{
-                                        background: copied ? '#10b981' : undefined
-                                    }}
-                                >
-                                    {copied ? '✅ Copied to Clipboard!' : '📋 Copy Prompt for Claude'}
-                                </button>
-                            </div>
-                        )}
-                    </>
-                )}
+                    {/* Actions */}
+                    <div className="card mt-auto bg-slate-800 text-white border-none">
+                        <h3 className="text-sm font-bold mb-3 text-slate-200">Next Steps</h3>
+                        <p className="text-xs text-slate-400 mb-4">
+                            Push collected research data to the Prompt Studio to generate a Claude prompt.
+                        </p>
+                        <button
+                            className="btn w-full bg-indigo-600 hover:bg-indigo-700 text-white border-none"
+                            disabled={results.length === 0}
+                            onClick={() => topic && onNavigateToPrompt?.({ topic, results, aiSummary })}
+                        >
+                            ➡️ Push to Prompt Studio
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     );

@@ -1,74 +1,60 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
-    try {
-        const { query, maxResults = 10 } = await req.json();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
 
+    try {
+        const { query } = await req.json();
         if (!query) {
-            return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+            return NextResponse.json({ error: 'Query required' }, { status: 400 });
         }
 
-        // Use DuckDuckGo Instant Answer API (free, no key required)
-        // For more comprehensive results, we'll scrape the HTML search page
-        const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-
-        const response = await fetch(searchUrl, {
+        // Use DuckDuckGo HTML endpoint
+        const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+            signal: controller.signal,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
         });
 
-        if (!response.ok) {
-            throw new Error('Search request failed');
+        if (!res.ok) throw new Error(`Search provider error: ${res.status}`);
+
+        const html = await res.text();
+        const results = parseDuckDuckGoHtml(html);
+
+        return NextResponse.json({ success: true, results: results.slice(0, 8) });
+
+    } catch (error: unknown) {
+        if (error instanceof Error && error.name === 'AbortError') {
+            return NextResponse.json({ error: 'Search timed out' }, { status: 504 });
         }
-
-        const html = await response.text();
-
-        // Parse search results from HTML
-        const results = parseSearchResults(html, maxResults);
-
-        return NextResponse.json({
-            success: true,
-            query,
-            results,
-            count: results.length
-        });
-
-    } catch (error: any) {
-        console.error('Scraper API Error:', error);
-        return NextResponse.json({ error: error.message || 'Search failed' }, { status: 500 });
+        console.error('Scraper Error:', error);
+        return NextResponse.json({ error: 'Search failed' }, { status: 500 });
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 
-function parseSearchResults(html: string, maxResults: number) {
-    const results: Array<{ title: string, url: string, snippet: string }> = [];
-
-    // Simple regex-based extraction (works for DuckDuckGo HTML)
-    const resultRegex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([^<]*)/g;
+// Simple regex parser
+function parseDuckDuckGoHtml(html: string) {
+    const results = [];
+    const linkRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+    const snippetRegex = /<a[^>]+class="result__snippet"[^>]+>([^<]+)<\/a>/g;
 
     let match;
-    while ((match = resultRegex.exec(html)) !== null && results.length < maxResults) {
+    while ((match = linkRegex.exec(html)) !== null) {
         const url = match[1];
-        const title = match[2].trim();
-        const snippet = match[3].trim();
+        const title = match[2];
 
-        if (title && url) {
+        snippetRegex.lastIndex = linkRegex.lastIndex;
+        const snipMatch = snippetRegex.exec(html);
+        const snippet = snipMatch ? snipMatch[1] : '';
+
+        if (url && title) {
             results.push({ title, url, snippet });
         }
     }
-
-    // Alternative extraction if regex didn't work well
-    if (results.length === 0) {
-        // Fallback: extract any links with reasonable text
-        const linkRegex = /<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([^<]{10,})<\/a>/g;
-        while ((match = linkRegex.exec(html)) !== null && results.length < maxResults) {
-            const url = match[1];
-            const title = match[2].trim();
-            if (!url.includes('duckduckgo.com') && title.length > 10) {
-                results.push({ title, url, snippet: '' });
-            }
-        }
-    }
-
     return results;
 }

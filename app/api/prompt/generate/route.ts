@@ -1,61 +1,67 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// Initialize Gemini Client
+const apiKey = process.env.GEMINI_API_KEY;
+const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+
+// Type for request body
+interface GenerateRequest {
+    topic: string;
+    scrapedData?: { title: string; snippet: string }[];
+    preferences?: { additionalNotes?: string };
+}
 
 export async function POST(req: NextRequest) {
     try {
-        const { topic, scrapedData, preferences } = await req.json();
-
-        if (!topic) {
-            return NextResponse.json({ error: 'Topic is required' }, { status: 400 });
+        // 1. Validate Environment
+        if (!genAI) {
+            return NextResponse.json({ error: 'Server configuration error: Gemini API key missing' }, { status: 500 });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+        // 2. Validate Input
+        const body = (await req.json()) as GenerateRequest;
+        const { topic, scrapedData, preferences } = body;
 
-        // Build context from scraped data
-        const researchContext = scrapedData?.map((item: any, i: number) =>
-            `[Source ${i + 1}: ${item.title}]\n${item.snippet || item.url}`
-        ).join('\n\n') || 'No external research provided.';
+        if (!topic || typeof topic !== 'string') {
+            return NextResponse.json({ error: 'Validation Error: Topic is required' }, { status: 400 });
+        }
 
-        const metaPrompt = `
-You are a prompt engineering expert. Create a detailed prompt for Claude to write a comprehensive blog article.
+        // 3. Construct Prompt
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-TOPIC: ${topic}
+        // Explicitly cast scrapedData to ensure type safety in map
+        const context = scrapedData && Array.isArray(scrapedData)
+            ? scrapedData.map((d) => `Source: ${d.title}\n${d.snippet}`).join('\n\n')
+            : 'No external research provided.';
 
-RESEARCH DATA GATHERED:
-${researchContext}
+        const systemPrompt = `
+      You are an expert prompt engineer for Claude 3.5 Sonnet.
+      Goal: Create a detailed, architected prompt for writing a specialized technical article about ASIC Repair.
+      
+      TOPIC: ${topic}
+      
+      RESEARCH CONTEXT:
+      ${context}
+      
+      USER PREFERENCES:
+      ${preferences?.additionalNotes || 'Standard technical tone.'}
+      
+      OUTPUT FORMAT:
+      Return ONLY the prompt text that the user should copy-paste to Claude.
+    `;
 
-USER PREFERENCES:
-- Target Audience: ASIC miner technicians in India
-- Tone: Technical but accessible
-- Word Count: 2000-2500 words
-- SEO Focus: Include keywords naturally
-${preferences?.additionalNotes || ''}
+        // 4. Generate
+        const result = await model.generateContent(systemPrompt);
+        const responseText = result.response.text();
 
-Generate a complete, copy-paste ready prompt that includes:
-1. Clear instructions for Claude
-2. The topic and angle to cover
-3. Key points to address (based on research)
-4. Specific sections to include
-5. SEO keywords to weave in
-6. Call-to-action for ASICREPAIR.IN
+        return NextResponse.json({ success: true, prompt: responseText });
 
-Format the output as a ready-to-use Claude prompt.
-`;
-
-        const result = await model.generateContent(metaPrompt);
-        const generatedPrompt = result.response.text();
-
-        return NextResponse.json({
-            success: true,
-            topic,
-            prompt: generatedPrompt,
-            sourcesUsed: scrapedData?.length || 0
-        });
-
-    } catch (error: any) {
-        console.error('Prompt Generator Error:', error);
-        return NextResponse.json({ error: error.message || 'Generation failed' }, { status: 500 });
+    } catch (error: unknown) {
+        // Type-safe error handling
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Gemini API Error:', error);
+        return NextResponse.json({ error: 'Internal Server Error', details: errorMessage }, { status: 500 });
     }
 }

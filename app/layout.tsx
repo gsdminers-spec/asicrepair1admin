@@ -1,19 +1,20 @@
-import type { Metadata } from "next";
-import "./globals.css";
+
+import './globals.css';
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "ASICREPAIR.IN - Blog Admin",
-  description: "Blog Administration System for ASICREPAIR.IN",
+    title: 'ASICREPAIR.IN Blog Admin',
+    description: 'Internal content generation system',
 };
 
 export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body>{children}</body>
-    </html>
-  );
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    return (
+        <html lang="en">
+            <body>{children}</body>
+        </html>
+    );
 }
