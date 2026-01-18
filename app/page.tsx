@@ -12,6 +12,7 @@ import PromptStudio from './components/PromptStudio';
 import ClaudeOutput from './components/ClaudeOutput';
 import PublishHub from './components/PublishHub';
 import KeywordTracker from './components/KeywordTracker';
+import ArticlesManager from './components/ArticlesManager';
 
 // --- Types ---
 type Page = 'dashboard' | 'tree' | 'research' | 'generate' | 'claude' | 'articles' | 'publish' | 'keywords';
@@ -187,11 +188,7 @@ export default function Home() {
                 {activePage === 'claude' && <ClaudeOutput />}
 
                 {activePage === 'articles' && (
-                    <div className="card text-center py-20 text-slate-400">
-                        <span className="text-4xl block mb-4">📝</span>
-                        <p>Articles Manager is under construction.</p>
-                        <button className="btn btn-primary mt-4" onClick={() => navigateTo('claude')}>Add New Article</button>
-                    </div>
+                    <ArticlesManager onNavigateToPublish={() => navigateTo('publish')} />
                 )}
 
                 {activePage === 'publish' && <PublishHub />}
