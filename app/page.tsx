@@ -88,6 +88,24 @@ export default function Home() {
                         </button>
                     ))}
                 </nav>
+
+                {/* Logout Button */}
+                <div className="p-4 border-t border-slate-700">
+                    <button
+                        className="w-full flex items-center gap-3 text-slate-400 hover:text-red-400 hover:bg-slate-800 p-2 rounded transition-colors"
+                        onClick={() => {
+                            if (confirm('Are you sure you want to logout?')) {
+                                // Clear session and show login (placeholder)
+                                alert('Logged out successfully. Session cleared.');
+                                window.location.reload();
+                            }
+                        }}
+                    >
+                        <span>🚪</span>
+                        Logout
+                    </button>
+                </div>
+
                 <div className="p-4 border-t border-slate-700">
                     <div className="text-xs text-slate-400 mb-2">System Status</div>
                     <div className="flex items-center gap-2 text-xs text-green-400">

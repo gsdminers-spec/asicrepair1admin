@@ -2,176 +2,279 @@
 'use client';
 
 import { useState } from 'react';
-import { DbTopic } from '@/lib/supabase';
+import { BLOG_TREE_DATA, Phase, Category, Subcategory, Topic, getPhaseStats } from '@/lib/blogTreeData';
 
-// --- Types for Local Tree State ---
-type ViewLevel = 'root' | 'mid' | 'leaf';
-
-interface TreeNode {
-    id: string;
-    label: string;
-    count: number;
-    children?: TreeNode[];
-    topics?: Partial<DbTopic>[]; // Leaf nodes have topics
+interface BlogTreeProps {
+    onSelectTopic?: (topic: string) => void;
 }
 
-// --- Mock Data Structure (Walkthrough Aligned) ---
-const BLOG_TREE_DATA: TreeNode[] = [
-    {
-        id: 'p1', label: 'PHASE 1: Hashboard Not Detected', count: 80, children: [
-            {
-                id: 'p1-c1', label: '⚡ ANTMINER', count: 20, children: [
-                    {
-                        id: 'p1-c1-s1', label: '📂 S-Series', count: 9, topics: [
-                            { id: 1, title: 'Antminer S21 Pro Hashboard Not Detected', status: 'pending' },
-                            { id: 2, title: 'Antminer S21 Hydro "0 ASIC Chip" Error', status: 'pending' },
-                            { id: 3, title: 'Antminer S19 XP Hashboard Missing', status: 'done' },
-                        ]
-                    },
-                    { id: 'p1-c1-s2', label: '📂 T-Series', count: 2, topics: [] },
-                    { id: 'p1-c1-s3', label: '📂 L-Series', count: 3, topics: [] },
-                ]
-            },
-            { id: 'p1-c2', label: '⚡ WHATSMINER', count: 15, children: [] },
-            { id: 'p1-c3', label: '⚡ AVALON', count: 5, children: [] },
-        ]
-    },
-    { id: 'p2', label: 'PHASE 2: Repair Insights', count: 30, children: [] },
-    { id: 'p3', label: 'PHASE 3: Seasonal & Environmental', count: 10, children: [] },
-    { id: 'p4', label: 'PHASE 4: Repair Decisions', count: 10, children: [] },
-];
+type View = 'phases' | 'categories' | 'subcategories' | 'topics';
 
-export default function BlogTree({ onSelectTopic }: { onSelectTopic: (topic: string) => void }) {
-    const [level, setLevel] = useState<ViewLevel>('root');
-    const [breadcrumbs, setBreadcrumbs] = useState<TreeNode[]>([]);
-    const [currentNode, setCurrentNode] = useState<TreeNode | null>(null);
+export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
+    const [view, setView] = useState<View>('phases');
+    const [selectedPhase, setSelectedPhase] = useState<Phase | null>(null);
+    const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+    const [selectedSubcategory, setSelectedSubcategory] = useState<Subcategory | null>(null);
 
-    const activeItems = currentNode ? currentNode.children || [] : BLOG_TREE_DATA;
-    const activeTopics = currentNode?.topics || [];
+    // CRUD Modal State
+    const [showMenu, setShowMenu] = useState(false);
+    const [modalAction, setModalAction] = useState<'add' | 'rename' | 'delete' | null>(null);
+    const [modalInput, setModalInput] = useState('');
 
-    const handleDrillDown = (node: TreeNode) => {
-        setBreadcrumbs([...breadcrumbs, node]);
-        setCurrentNode(node);
-        setLevel(node.topics ? 'leaf' : 'mid');
+    // --- Navigation ---
+    const goToPhases = () => {
+        setView('phases');
+        setSelectedPhase(null);
+        setSelectedCategory(null);
+        setSelectedSubcategory(null);
     };
 
-    const handleBreadcrumbClick = (index: number) => {
-        if (index === -1) {
-            setBreadcrumbs([]);
-            setCurrentNode(null);
-            setLevel('root');
-        } else {
-            const newCrumbs = breadcrumbs.slice(0, index + 1);
-            setBreadcrumbs(newCrumbs);
-            setCurrentNode(newCrumbs[newCrumbs.length - 1]);
-            setLevel(newCrumbs[newCrumbs.length - 1].topics ? 'leaf' : 'mid');
-        }
+    const goToCategories = (phase: Phase) => {
+        setSelectedPhase(phase);
+        setView('categories');
     };
 
-    return (
-        <div className="h-full flex flex-col gap-6">
-            {/* Header & Breadcrumbs */}
-            <div className="card">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span
-                        className="cursor-pointer hover:text-blue-600 font-semibold"
-                        onClick={() => handleBreadcrumbClick(-1)}
-                    >
-                        🏠 Root
-                    </span>
-                    {breadcrumbs.map((node, i) => (
-                        <div key={node.id} className="flex items-center gap-2">
-                            <span>/</span>
-                            <span
-                                className={`cursor-pointer hover:text-blue-600 ${i === breadcrumbs.length - 1 ? 'font-bold text-gray-900' : ''}`}
-                                onClick={() => handleBreadcrumbClick(i)}
-                            >
-                                {node.label}
-                            </span>
-                        </div>
-                    ))}
-                </div>
-            </div>
+    const goToSubcategories = (category: Category) => {
+        setSelectedCategory(category);
+        setView('subcategories');
+    };
 
-            {/* Grid View for Phases/Categories */}
-            {level !== 'leaf' && (
-                <div className="grid-2 md:grid-3">
-                    {activeItems.map(node => (
-                        <div
-                            key={node.id}
-                            className="card cursor-pointer hover:border-blue-400 transition-colors group"
-                            onClick={() => handleDrillDown(node)}
-                        >
-                            <div className="flex justify-between items-start mb-4">
-                                <span className="text-2xl group-hover:scale-110 transition-transform duration-200">
-                                    {level === 'root' ? '📁' : '⚡'}
-                                </span>
-                                <span className="badge badge-gray">{node.count} articles</span>
-                            </div>
-                            <h3 className="text-lg font-bold text-gray-800">{node.label}</h3>
-                            {node.children && (
-                                <p className="text-sm text-gray-500 mt-2">
-                                    {node.children.length} Categories
-                                </p>
-                            )}
-                        </div>
-                    ))}
-                    {/* Add New Placeholder */}
-                    <div className="card border-dashed border-2 flex items-center justify-center cursor-pointer hover:bg-gray-50 opacity-60 hover:opacity-100">
-                        <span className="text-gray-400 font-medium">+ Add New</span>
-                    </div>
-                </div>
+    const goToTopics = (subcategory: Subcategory) => {
+        setSelectedSubcategory(subcategory);
+        setView('topics');
+    };
+
+    // --- Breadcrumb ---
+    const renderBreadcrumb = () => (
+        <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
+            <button className="hover:text-indigo-600" onClick={goToPhases}>🌳 Blog Tree</button>
+            {selectedPhase && (
+                <>
+                    <span>/</span>
+                    <button className="hover:text-indigo-600" onClick={() => { setView('categories'); setSelectedCategory(null); setSelectedSubcategory(null); }}>
+                        {selectedPhase.name}
+                    </button>
+                </>
             )}
+            {selectedCategory && (
+                <>
+                    <span>/</span>
+                    <button className="hover:text-indigo-600" onClick={() => { setView('subcategories'); setSelectedSubcategory(null); }}>
+                        {selectedCategory.name}
+                    </button>
+                </>
+            )}
+            {selectedSubcategory && (
+                <>
+                    <span>/</span>
+                    <span className="text-slate-800 font-medium">{selectedSubcategory.name}</span>
+                </>
+            )}
+        </div>
+    );
 
-            {/* Topic List View (Leaf Level) */}
-            {level === 'leaf' && (
-                <div className="card">
-                    <div className="card-header">
-                        <h3 className="card-title">📝 Topics in {currentNode?.label}</h3>
-                        <button className="btn btn-primary text-sm">+ Add Topic</button>
-                    </div>
+    // --- CRUD Actions (Placeholder) ---
+    const handleCrudAction = (action: 'add' | 'rename' | 'delete', target: string) => {
+        setModalAction(action);
+        setModalInput('');
+        alert(`[Demo] ${action.toUpperCase()} ${target} — This would open a modal in production.`);
+        setShowMenu(false);
+    };
 
-                    <table className="w-full text-left text-sm">
-                        <thead className="bg-slate-50 border-b border-slate-200">
-                            <tr>
-                                <th className="p-3 font-semibold text-slate-600">#</th>
-                                <th className="p-3 font-semibold text-slate-600">Topic Title</th>
-                                <th className="p-3 font-semibold text-slate-600">Status</th>
-                                <th className="p-3 font-semibold text-slate-600 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {activeTopics.length === 0 ? (
-                                <tr><td colSpan={4} className="p-4 text-center text-gray-500">No topics found.</td></tr>
-                            ) : (
-                                activeTopics.map((topic, idx) => (
-                                    <tr key={topic.id} className="border-b border-slate-100 hover:bg-slate-50">
-                                        <td className="p-3 text-slate-500">{idx + 1}</td>
-                                        <td className="p-3 font-medium text-slate-800">{topic.title}</td>
-                                        <td className="p-3">
-                                            <span className={`badge ${topic.status === 'done' ? 'badge-green' : 'badge-amber'}`}>
-                                                {topic.status?.toUpperCase()}
-                                            </span>
-                                        </td>
-                                        <td className="p-3 text-right">
-                                            {topic.status === 'pending' ? (
-                                                <button
-                                                    className="btn btn-secondary text-xs py-1"
-                                                    onClick={() => onSelectTopic(topic.title || '')}
-                                                >
-                                                    📤 Send to Research
-                                                </button>
-                                            ) : (
-                                                <button className="btn btn-secondary text-xs py-1">✅ View</button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+    // --- Hamburger Menu ---
+    const renderHamburgerMenu = (level: string) => (
+        <div className="relative">
+            <button
+                className="p-2 hover:bg-slate-100 rounded text-slate-500"
+                onClick={() => setShowMenu(!showMenu)}
+            >
+                ☰
+            </button>
+            {showMenu && (
+                <div className="absolute right-0 top-10 bg-white border shadow-lg rounded-lg z-50 w-48">
+                    <button className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm" onClick={() => handleCrudAction('add', level)}>
+                        ➕ Add {level}
+                    </button>
+                    <button className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm" onClick={() => handleCrudAction('rename', level)}>
+                        ✏️ Rename {level}
+                    </button>
+                    <button className="w-full text-left px-4 py-2 hover:bg-red-50 text-sm text-red-600" onClick={() => handleCrudAction('delete', level)}>
+                        🗑️ Delete {level}
+                    </button>
                 </div>
             )}
         </div>
     );
+
+    // --- PHASES VIEW ---
+    if (view === 'phases') {
+        return (
+            <div className="flex flex-col gap-6">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-bold text-slate-800">📁 Content Roadmap (4 Phases)</h2>
+                    {renderHamburgerMenu('Phase')}
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                    {BLOG_TREE_DATA.map(phase => {
+                        const stats = getPhaseStats(phase);
+                        return (
+                            <div
+                                key={phase.id}
+                                className="card hover:shadow-lg cursor-pointer transition-all border-l-4 border-l-indigo-500"
+                                onClick={() => goToCategories(phase)}
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h3 className="font-bold text-lg text-slate-800">📁 {phase.name}</h3>
+                                        <p className="text-slate-500 text-sm mt-1">{phase.description}</p>
+                                    </div>
+                                    <span className="text-2xl">→</span>
+                                </div>
+                                <div className="mt-4 flex gap-4 text-xs text-slate-500">
+                                    <span className="bg-slate-100 px-2 py-1 rounded">{stats.articles} Articles</span>
+                                    <span className="bg-slate-100 px-2 py-1 rounded">{stats.categories} Categories</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+
+    // --- CATEGORIES VIEW ---
+    if (view === 'categories' && selectedPhase) {
+        return (
+            <div className="flex flex-col gap-6">
+                {renderBreadcrumb()}
+                <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-bold text-slate-800">📁 {selectedPhase.name}: {selectedPhase.description}</h2>
+                    {renderHamburgerMenu('Category')}
+                </div>
+
+                <div className="flex flex-col gap-4">
+                    {selectedPhase.categories.map(cat => {
+                        const articleCount = cat.subcategories.reduce((sum, sub) => sum + sub.topics.length, 0);
+                        return (
+                            <div
+                                key={cat.id}
+                                className="card hover:shadow-md cursor-pointer transition-all flex justify-between items-center"
+                                onClick={() => goToSubcategories(cat)}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">⚡</span>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800">{cat.name}</h4>
+                                        <span className="text-xs text-slate-500">{articleCount} articles • {cat.subcategories.length} sub-categories</span>
+                                    </div>
+                                </div>
+                                <span className="text-slate-400">→</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+
+    // --- SUBCATEGORIES VIEW ---
+    if (view === 'subcategories' && selectedCategory) {
+        return (
+            <div className="flex flex-col gap-6">
+                {renderBreadcrumb()}
+                <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-bold text-slate-800">⚡ {selectedCategory.name}</h2>
+                    {renderHamburgerMenu('Sub-category')}
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    {selectedCategory.subcategories.map(sub => (
+                        <div
+                            key={sub.id}
+                            className="card hover:shadow-md cursor-pointer transition-all flex justify-between items-center py-3"
+                            onClick={() => goToTopics(sub)}
+                        >
+                            <div className="flex items-center gap-3">
+                                <span className="text-xl">📂</span>
+                                <div>
+                                    <h4 className="font-semibold text-slate-800">{sub.name}</h4>
+                                    <span className="text-xs text-slate-500">{sub.topics.length} articles</span>
+                                </div>
+                            </div>
+                            <span className="text-slate-400">→</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    // --- TOPICS VIEW ---
+    if (view === 'topics' && selectedSubcategory) {
+        return (
+            <div className="flex flex-col gap-6">
+                {renderBreadcrumb()}
+                <div className="flex justify-between items-center">
+                    <h2 className="text-lg font-bold text-slate-800">📂 {selectedSubcategory.name}</h2>
+                    {renderHamburgerMenu('Topic')}
+                </div>
+
+                <div className="card p-0 overflow-hidden">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b">
+                            <tr>
+                                <th className="p-3 font-semibold text-slate-600 w-10">#</th>
+                                <th className="p-3 font-semibold text-slate-600">Topic Title</th>
+                                <th className="p-3 font-semibold text-slate-600 w-24">Status</th>
+                                <th className="p-3 font-semibold text-slate-600 text-right w-48">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                            {selectedSubcategory.topics.map((topic, idx) => (
+                                <tr key={topic.id} className="hover:bg-slate-50">
+                                    <td className="p-3 text-slate-400">{idx + 1}</td>
+                                    <td className="p-3 font-medium text-slate-800">{topic.title}</td>
+                                    <td className="p-3">
+                                        {topic.status === 'done' && <span className="badge badge-green">Done</span>}
+                                        {topic.status === 'pending' && <span className="badge badge-gray">Pending</span>}
+                                        {topic.status === 'in-progress' && <span className="badge badge-blue">In Progress</span>}
+                                    </td>
+                                    <td className="p-3 text-right space-x-2">
+                                        {topic.status === 'done' ? (
+                                            <button className="text-green-600 text-xs font-medium">✅ View Article</button>
+                                        ) : (
+                                            <button
+                                                className="btn btn-primary text-xs py-1 px-2"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onSelectTopic?.(topic.title);
+                                                }}
+                                            >
+                                                📤 Send to Research
+                                            </button>
+                                        )}
+                                        <button
+                                            className="text-slate-400 hover:text-slate-600 text-xs"
+                                            onClick={(e) => { e.stopPropagation(); handleCrudAction('rename', 'Topic'); }}
+                                        >
+                                            ✏️
+                                        </button>
+                                        <button
+                                            className="text-red-400 hover:text-red-600 text-xs"
+                                            onClick={(e) => { e.stopPropagation(); handleCrudAction('delete', 'Topic'); }}
+                                        >
+                                            🗑️
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    }
+
+    return null;
 }
