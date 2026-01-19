@@ -2,8 +2,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getDashboardStats } from '@/lib/supabase';
+import { getDashboardStats, supabase } from '@/lib/supabase';
 import { PromptData } from '@/lib/types';
+import { Skeleton } from './components/ui/Skeleton';
 
 // Components
 import BlogTree from './components/BlogTree';
@@ -16,6 +17,14 @@ import ArticlesManager from './components/ArticlesManager';
 
 // --- Types ---
 type Page = 'dashboard' | 'tree' | 'research' | 'generate' | 'claude' | 'articles' | 'publish' | 'keywords';
+
+interface ActivityLog {
+    id: string;
+    action: string;
+    details: string;
+    created_at: string;
+    target: string;
+}
 
 export default function Home() {
     const [activePage, setActivePage] = useState<Page>('dashboard');
@@ -32,12 +41,37 @@ export default function Home() {
         published: 0
     });
 
-    // Fetch stats on mount
+    // Activity Logs
+    const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+    const [loadingLogs, setLoadingLogs] = useState(true);
+
+    // Fetch stats & logs on mount
     useEffect(() => {
         getDashboardStats().then(setStats);
+        fetchActivityLogs();
     }, []);
 
+    const fetchActivityLogs = async () => {
+        setLoadingLogs(true);
+        const { data } = await supabase
+            .from('activity_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+        if (data) setActivityLogs(data);
+        setLoadingLogs(false);
+    };
+
     // --- Handlers ---
+    // Handle Logout
+    const handleLogout = async () => {
+        if (confirm('Are you sure you want to logout?')) {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+    };
+
     const navigateTo = (page: Page) => {
         setActivePage(page);
         setMobileMenuOpen(false);
@@ -93,13 +127,7 @@ export default function Home() {
                 <div className="p-4 border-t border-slate-700">
                     <button
                         className="w-full flex items-center gap-3 text-slate-400 hover:text-red-400 hover:bg-slate-800 p-2 rounded transition-colors"
-                        onClick={() => {
-                            if (confirm('Are you sure you want to logout?')) {
-                                // Clear session and show login (placeholder)
-                                alert('Logged out successfully. Session cleared.');
-                                window.location.reload();
-                            }
-                        }}
+                        onClick={handleLogout}
                     >
                         <span>🚪</span>
                         Logout
@@ -110,7 +138,7 @@ export default function Home() {
                     <div className="text-xs text-slate-400 mb-2">System Status</div>
                     <div className="flex items-center gap-2 text-xs text-green-400">
                         <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                        Online v2.1
+                        Online v2.2 (Secured)
                     </div>
                 </div>
             </aside>
@@ -169,16 +197,26 @@ export default function Home() {
                                 </div>
                             </div>
                             <div className="card bg-slate-50 border-dashed">
-                                <h3 className="card-title text-slate-400">System Activity</h3>
-                                <div className="mt-4 space-y-3">
-                                    <div className="text-sm text-slate-500 flex gap-2">
-                                        <span>🕒 2m ago</span>
-                                        <span>Scraper updated for &quot;S19 Pro&quot;</span>
-                                    </div>
-                                    <div className="text-sm text-slate-500 flex gap-2">
-                                        <span>🕒 15m ago</span>
-                                        <span>New keyword &quot;M50s error&quot; added</span>
-                                    </div>
+                                <h3 className="card-title text-slate-400 mb-4">System Activity</h3>
+                                <div className="space-y-3">
+                                    {loadingLogs ? (
+                                        <>
+                                            <Skeleton className="h-5 w-full" />
+                                            <Skeleton className="h-5 w-3/4" />
+                                            <Skeleton className="h-5 w-5/6" />
+                                        </>
+                                    ) : activityLogs.length === 0 ? (
+                                        <div className="text-sm text-slate-400">No activity recorded yet.</div>
+                                    ) : (
+                                        activityLogs.map(log => (
+                                            <div key={log.id} className="text-sm text-slate-500 flex gap-2 overflow-hidden">
+                                                <span className="text-slate-400 shrink-0">
+                                                    {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                                <span className="truncate">{log.details}</span>
+                                            </div>
+                                        ))
+                                    )}
                                 </div>
                             </div>
                         </div>

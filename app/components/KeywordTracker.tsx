@@ -1,199 +1,180 @@
 
 'use client';
 
-import { useState } from 'react';
-
-// --- Types ---
-interface Keyword {
-    id: number;
-    phrase: string;
-    volume: 'high' | 'medium' | 'low';
-    model: string;
-    category: string;
-    status: 'pending' | 'approved' | 'rejected';
-    // Extended Details
-    repairIntent?: boolean;
-    adminNotes?: string;
-    rawVolumeHint?: string;
-}
-
-const MOCK_KEYWORDS: Keyword[] = [
-    {
-        id: 1,
-        phrase: 's19 pro hashboard repair',
-        volume: 'high',
-        model: 'Antminer S19 Pro',
-        category: 'Hashboard',
-        status: 'approved',
-        repairIntent: true,
-        rawVolumeHint: 'High (API: 1.2k/mo)',
-        adminNotes: 'Priority - common issue in India'
-    },
-    {
-        id: 2,
-        phrase: 'whatsminer m30s error 202',
-        volume: 'medium',
-        model: 'M30S',
-        category: 'PSU',
-        status: 'pending',
-        repairIntent: true,
-        rawVolumeHint: 'Medium (API: 450/mo)',
-        adminNotes: ''
-    },
-    {
-        id: 3,
-        phrase: 'avalon miner not starting',
-        volume: 'low',
-        model: 'Avalon',
-        category: 'General',
-        status: 'rejected',
-        repairIntent: false,
-        rawVolumeHint: 'Low (API: 50/mo)',
-        adminNotes: 'Too generic'
-    },
-];
+import { useState, useEffect } from 'react';
+import { fetchKeywords, addKeyword, updateKeywordStatus } from '@/lib/keywordActions';
+import { Keyword } from '@/lib/supabase';
 
 export default function KeywordTracker() {
-    const [keywords, setKeywords] = useState<Keyword[]>(MOCK_KEYWORDS);
-    const [newKeyword, setNewKeyword] = useState('');
-    const [expandedId, setExpandedId] = useState<number | null>(null);
+    const [keywords, setKeywords] = useState<Keyword[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [newPhrase, setNewPhrase] = useState('');
+    const [newModel, setNewModel] = useState('');
+    const [newCategory, setNewCategory] = useState('');
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
-    const handleAdd = () => {
-        if (!newKeyword) return;
-        const newItem: Keyword = {
-            id: Date.now(),
-            phrase: newKeyword,
-            volume: 'medium',
-            model: 'General',
-            category: 'Unsorted',
-            status: 'pending',
-            repairIntent: false,
-            adminNotes: ''
-        };
-        setKeywords([newItem, ...keywords]);
-        setNewKeyword('');
+    useEffect(() => {
+        loadKeywords();
+    }, []);
+
+    const loadKeywords = async () => {
+        setLoading(true);
+        const data = await fetchKeywords();
+        setKeywords(data);
+        setLoading(false);
     };
 
-    const updateStatus = (id: number, status: Keyword['status']) => {
-        setKeywords(prev => prev.map(k => k.id === id ? { ...k, status } : k));
+    const handleAdd = async () => {
+        if (!newPhrase.trim()) {
+            alert('Please enter a keyword phrase.');
+            return;
+        }
+        const result = await addKeyword(newPhrase.trim(), newModel.trim() || undefined, newCategory.trim() || undefined);
+        if (result.success) {
+            setNewPhrase('');
+            setNewModel('');
+            setNewCategory('');
+            loadKeywords();
+        } else {
+            alert(result.error || 'Failed to add keyword');
+        }
     };
 
-    const toggleExpand = (id: number) => {
+    const handleStatusUpdate = async (id: string, status: 'approved' | 'rejected') => {
+        const result = await updateKeywordStatus(id, status);
+        if (result.success) {
+            loadKeywords();
+        } else {
+            alert(result.error || 'Failed to update status');
+        }
+    };
+
+    const toggleExpand = (id: string) => {
         setExpandedId(expandedId === id ? null : id);
     };
 
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case 'approved': return <span className="badge badge-green">Approved</span>;
+            case 'rejected': return <span className="badge badge-gray">Rejected</span>;
+            default: return <span className="badge badge-blue">Pending</span>;
+        }
+    };
+
+    const getVolumeBadge = (volume: string) => {
+        switch (volume) {
+            case 'high': return <span className="text-green-600 font-semibold">High</span>;
+            case 'low': return <span className="text-slate-400">Low</span>;
+            default: return <span className="text-blue-600">Medium</span>;
+        }
+    };
+
+    if (loading) {
+        return <div className="p-8 text-center text-slate-500">⏳ Loading keywords...</div>;
+    }
+
     return (
         <div className="flex flex-col gap-6">
-
-            {/* Add Bar */}
+            {/* Add Keyword Card */}
             <div className="card">
-                <div className="flex gap-4 items-end">
-                    <div className="flex-1">
-                        <label className="text-sm font-semibold text-slate-700 block mb-1">Add New Keyword</label>
+                <h3 className="card-title mb-4">➕ Add New Keyword</h3>
+                <div className="grid md:grid-cols-4 gap-4">
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium mb-1">Keyword Phrase *</label>
                         <input
+                            type="text"
                             className="form-input"
-                            placeholder="Type keyword phrase..."
-                            value={newKeyword}
-                            onChange={(e) => setNewKeyword(e.target.value)}
-                            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+                            placeholder="e.g., s19 pro hashboard repair"
+                            value={newPhrase}
+                            onChange={e => setNewPhrase(e.target.value)}
                         />
                     </div>
-                    <button className="btn btn-primary mb-[1px]" onClick={handleAdd}>+ Add</button>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Model</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g., Antminer S19"
+                            value={newModel}
+                            onChange={e => setNewModel(e.target.value)}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium mb-1">Category</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g., Hashboard"
+                            value={newCategory}
+                            onChange={e => setNewCategory(e.target.value)}
+                        />
+                    </div>
                 </div>
+                <button className="btn btn-primary mt-4" onClick={handleAdd}>
+                    Add Keyword
+                </button>
             </div>
 
-            {/* List */}
+            {/* Keywords List */}
             <div className="card p-0 overflow-hidden">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>
-                            <th className="p-4 font-semibold text-slate-600 w-10"></th>
-                            <th className="p-4 font-semibold text-slate-600">Keyword Phrase</th>
-                            <th className="p-4 font-semibold text-slate-600">Model/Cat</th>
-                            <th className="p-4 font-semibold text-slate-600">Volume</th>
-                            <th className="p-4 font-semibold text-slate-600">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {keywords.map(k => (
-                            <>
-                                <tr
-                                    key={k.id}
-                                    className={`hover:bg-slate-50 transition-colors cursor-pointer ${expandedId === k.id ? 'bg-slate-50' : ''}`}
-                                    onClick={() => toggleExpand(k.id)}
-                                >
-                                    <td className="p-4 text-slate-400 text-center">
-                                        {expandedId === k.id ? '▼' : '▶'}
-                                    </td>
-                                    <td className="p-4 font-medium text-slate-800">{k.phrase}</td>
-                                    <td className="p-4 text-slate-500">
-                                        <div className="flex flex-col text-xs">
-                                            <span>{k.model}</span>
-                                            <span className="text-slate-400">{k.category}</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4">
-                                        <span className={`badge ${k.volume === 'high' ? 'badge-green' :
-                                            k.volume === 'medium' ? 'badge-blue' : 'badge-gray'
-                                            }`}>
-                                            {k.volume.toUpperCase()}
-                                        </span>
-                                    </td>
-                                    <td className="p-4">
-                                        {k.status === 'approved' && <span className="text-green-600 font-bold text-xs">✅ APPROVED</span>}
-                                        {k.status === 'rejected' && <span className="text-red-500 font-bold text-xs">❌ REJECTED</span>}
-                                        {k.status === 'pending' && <span className="text-amber-500 font-bold text-xs">⏳ PENDING</span>}
-                                    </td>
-                                </tr>
-
-                                {/* EXPANDED DETAILS */}
-                                {expandedId === k.id && (
-                                    <tr className="bg-slate-50">
-                                        <td colSpan={5} className="p-4 pl-12 border-b border-slate-100 shadow-inner">
-                                            <div className="grid md:grid-cols-2 gap-6 text-sm">
-                                                <div>
-                                                    <div className="mb-2"><strong className="text-slate-600">Keyword:</strong> {k.phrase}</div>
-                                                    <div className="mb-2"><strong className="text-slate-600">ASIC Model:</strong> {k.model}</div>
-                                                    <div className="mb-2"><strong className="text-slate-600">Failure Category:</strong> {k.category}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="mb-2">
-                                                        <strong className="text-slate-600">Repair Intent:</strong>{' '}
-                                                        {k.repairIntent ? '✅ Hardware failure implied' : '❌ Informational only'}
-                                                    </div>
-                                                    <div className="mb-2">
-                                                        <strong className="text-slate-600">Search Volume:</strong> {k.rawVolumeHint || 'N/A'}
-                                                    </div>
-                                                    <div className="mb-4">
-                                                        <strong className="text-slate-600 block mb-1">Admin Notes:</strong>
-                                                        <div className="bg-white p-2 border rounded text-slate-600 italic">
-                                                            &quot;{k.adminNotes || 'No notes'}&quot;
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-slate-200">
-                                                        <button
-                                                            className="btn bg-white border border-slate-300 hover:bg-slate-50 text-slate-600"
-                                                            onClick={() => updateStatus(k.id, 'rejected')}
-                                                        >
-                                                            ❌ Reject
-                                                        </button>
-                                                        <button
-                                                            className="btn btn-primary"
-                                                            onClick={() => updateStatus(k.id, 'approved')}
-                                                        >
-                                                            ✅ Approve
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
+                {keywords.length === 0 ? (
+                    <div className="p-8 text-center text-slate-500">
+                        No keywords yet. Add your first keyword above.
+                    </div>
+                ) : (
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th className="p-4 font-semibold text-slate-600">Phrase</th>
+                                <th className="p-4 font-semibold text-slate-600">Model</th>
+                                <th className="p-4 font-semibold text-slate-600">Category</th>
+                                <th className="p-4 font-semibold text-slate-600">Volume</th>
+                                <th className="p-4 font-semibold text-slate-600">Status</th>
+                                <th className="p-4 font-semibold text-slate-600 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {keywords.map(kw => (
+                                <>
+                                    <tr key={kw.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => toggleExpand(kw.id)}>
+                                        <td className="p-4 font-medium text-slate-800">{kw.phrase}</td>
+                                        <td className="p-4 text-slate-500">{kw.model || '-'}</td>
+                                        <td className="p-4 text-slate-500">{kw.category || '-'}</td>
+                                        <td className="p-4">{getVolumeBadge(kw.volume)}</td>
+                                        <td className="p-4">{getStatusBadge(kw.status)}</td>
+                                        <td className="p-4 text-right space-x-2" onClick={e => e.stopPropagation()}>
+                                            {kw.status === 'pending' && (
+                                                <>
+                                                    <button
+                                                        className="text-green-600 hover:text-green-800 font-medium"
+                                                        onClick={() => handleStatusUpdate(kw.id, 'approved')}
+                                                    >
+                                                        ✅ Approve
+                                                    </button>
+                                                    <button
+                                                        className="text-red-500 hover:text-red-700"
+                                                        onClick={() => handleStatusUpdate(kw.id, 'rejected')}
+                                                    >
+                                                        ❌ Reject
+                                                    </button>
+                                                </>
+                                            )}
                                         </td>
                                     </tr>
-                                )}
-                            </>
-                        ))}
-                    </tbody>
-                </table>
+                                    {expandedId === kw.id && (
+                                        <tr className="bg-slate-50">
+                                            <td colSpan={6} className="p-4">
+                                                <div className="text-sm text-slate-600">
+                                                    <strong>Notes:</strong> {kw.notes || 'No notes'}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
         </div>
     );

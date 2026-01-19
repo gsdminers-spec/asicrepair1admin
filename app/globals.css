@@ -1,23 +1,27 @@
-
 @import "tailwindcss";
 
 :root {
   /* Core Palette - Deep, Technical, Professional */
   --bg-app: #f8fafc;
-  --bg-sidebar: #0f172a; /* Slate 900 */
+  --bg-sidebar: #0f172a;
+  /* Slate 900 */
   --bg-card: #ffffff;
-  
+
   --text-primary: #1e293b;
   --text-secondary: #64748b;
   --text-sidebar: #cbd5e1;
   --text-sidebar-active: #ffffff;
 
-  --accent-primary: #3b82f6; /* Blue 500 */
+  --accent-primary: #3b82f6;
+  /* Blue 500 */
   --accent-hover: #2563eb;
-  --accent-success: #10b981; /* Emerald 500 */
-  --accent-warning: #f59e0b; /* Amber 500 */
-  --accent-danger: #ef4444; /* Red 500 */
-  
+  --accent-success: #10b981;
+  /* Emerald 500 */
+  --accent-warning: #f59e0b;
+  /* Amber 500 */
+  --accent-danger: #ef4444;
+  /* Red 500 */
+
   --border-subtle: #e2e8f0;
   --border-focus: #94a3b8;
 
@@ -89,7 +93,7 @@ body {
 }
 
 .nav-item:hover {
-  background-color: rgba(255,255,255,0.05);
+  background-color: rgba(255, 255, 255, 0.05);
   color: white;
 }
 
@@ -171,23 +175,34 @@ body {
   background-color: var(--accent-primary);
   color: white;
 }
-.btn-primary:hover { background-color: var(--accent-hover); }
+
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+}
 
 .btn-secondary {
   background-color: white;
   border: 1px solid var(--border-subtle);
   color: var(--text-primary);
 }
-.btn-secondary:hover { background-color: var(--bg-app); }
+
+.btn-secondary:hover {
+  background-color: var(--bg-app);
+}
 
 .btn-danger {
   background-color: #fee2e2;
   color: var(--accent-danger);
 }
-.btn-danger:hover { background-color: #fca5a5; }
+
+.btn-danger:hover {
+  background-color: #fca5a5;
+}
 
 /* --- Components: Inputs --- */
-.form-input, .form-select, .form-textarea {
+.form-input,
+.form-select,
+.form-textarea {
   width: 100%;
   padding: 0.625rem;
   border: 1px solid var(--border-subtle);
@@ -197,7 +212,9 @@ body {
   transition: border-color 0.2s;
 }
 
-.form-input:focus, .form-select:focus, .form-textarea:focus {
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
   background-color: white;
@@ -212,20 +229,93 @@ body {
   font-weight: 600;
   text-transform: uppercase;
 }
-.badge-blue { background-color: #dbeafe; color: #1e40af; }
-.badge-green { background-color: #d1fae5; color: #065f46; }
-.badge-amber { background-color: #fef3c7; color: #92400e; }
-.badge-gray { background-color: #f1f5f9; color: #475569; }
+
+.badge-blue {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.badge-green {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.badge-amber {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.badge-gray {
+  background-color: #f1f5f9;
+  color: #475569;
+}
 
 /* --- Grid Systems --- */
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
 
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
-  .sidebar { width: 0; overflow: hidden; }
-  .sidebar.open { width: 100%; position: absolute; z-index: 50; height: 100%; }
-  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-  .main-content { padding: 1rem; }
+  .sidebar {
+    width: 0;
+    overflow: hidden;
+  }
+
+  .sidebar.open {
+    width: 100%;
+    position: absolute;
+    z-index: 50;
+    height: 100%;
+  }
+
+  .grid-2,
+  .grid-3,
+  .grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .main-content {
+    padding: 1rem;
+  }
+}
+
+/* --- Print / PDF Styling --- */
+@media print {
+
+  .sidebar,
+  .page-header,
+  .btn,
+  .no-print {
+    display: none !important;
+  }
+
+  .main-content {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+
+  .card {
+    border: none;
+    box-shadow: none;
+  }
+
+  body {
+    background: white;
+  }
 }

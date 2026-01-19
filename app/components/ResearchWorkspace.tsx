@@ -1,9 +1,10 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ResearchViewer from './ResearchViewer';
 import { SearchResult } from '@/lib/types';
+import { saveTopicResearch, getTopicResearch } from '@/lib/researchActions';
 
 interface ResearchWorkspaceProps {
     initialTopic?: string;
@@ -16,12 +17,35 @@ export default function ResearchWorkspace({ initialTopic = '', onNavigateToPromp
     const [results, setResults] = useState<SearchResult[]>([]);
     const [aiSummary, setAiSummary] = useState('');
     const [keyFindings, setKeyFindings] = useState<string[]>([]);
+    const [isSaved, setIsSaved] = useState(false);
+
+    // Initial Load - Check if topic has data
+    useEffect(() => {
+        if (initialTopic) {
+            checkExistingResearch(initialTopic);
+        }
+    }, [initialTopic]);
+
+    const checkExistingResearch = async (title: string) => {
+        const { data } = await getTopicResearch(title);
+        if (data?.research_data) {
+            // Load existing
+            const rd = data.research_data;
+            if (rd.results?.length > 0) {
+                setResults(rd.results);
+                setAiSummary(rd.summary || '');
+                setKeyFindings(rd.keyFindings || []);
+                setIsSaved(true);
+            }
+        }
+    };
 
     const handleSearch = async () => {
         if (!topic) return;
         setLoading(true);
         setKeyFindings([]);
         setAiSummary('');
+        setIsSaved(false);
 
         try {
             const res = await fetch('/api/scraper/search', {
@@ -33,19 +57,23 @@ export default function ResearchWorkspace({ initialTopic = '', onNavigateToPromp
             const data = await res.json();
             if (data.success) {
                 setResults(data.results || []);
+                setAiSummary(data.aiSummary || '');
+                setKeyFindings(data.keyFindings || []);
 
-                // Mock Key Findings (would come from AI analysis in production)
-                setKeyFindings([
-                    'Common causes: EEPROM failure, chip damage, voltage rail issues',
-                    'Voltage range: 0.31V - 0.32V × chip groups',
-                    'Test equipment: PicoBT, PT3 tester recommended',
-                    'Thermal paste degradation often overlooked',
-                ]);
-
-                setAiSummary(`The ${topic} issue typically stems from EEPROM corruption, damaged ASIC chips, or voltage rail failures. Diagnosis requires specialized equipment like PicoBT or PT3 testers. Common repair procedures include reflashing EEPROM, replacing failed chips, and checking voltage regulators.`);
+                // Auto-save to database
+                await saveTopicResearch(topic, {
+                    results: data.results || [],
+                    summary: data.aiSummary || '',
+                    keyFindings: data.keyFindings || [],
+                    lastUpdated: new Date().toISOString()
+                });
+                setIsSaved(true);
+            } else {
+                alert('Search failed: ' + data.error);
             }
         } catch (e) {
             console.error('Search failed', e);
+            alert('Search failed. See console.');
         } finally {
             setLoading(false);
         }
@@ -72,13 +100,18 @@ ${results.map((r, i) => `${i + 1}. ${r.title} - ${r.url}`).join('\n')}
         setResults([]);
         setKeyFindings([]);
         setAiSummary('');
+        setIsSaved(false);
     };
 
     return (
         <div className="flex flex-col gap-6 h-full">
             {/* Search Input Area */}
             <div className="card">
-                <label className="block text-sm font-semibold text-slate-700 mb-2">🔬 Research Topic</label>
+                <div className="flex justify-between items-center mb-2">
+                    <label className="text-sm font-semibold text-slate-700">🔬 Research Topic</label>
+                    {isSaved && <span className="text-xs text-green-600 font-medium">✅ Saved to Database</span>}
+                </div>
+
                 <div className="flex gap-2">
                     <input
                         type="text"
@@ -137,7 +170,7 @@ ${results.map((r, i) => `${i + 1}. ${r.title} - ${r.url}`).join('\n')}
                                 🧠 AI Summary
                             </h3>
                             <div className="text-sm text-indigo-800 leading-relaxed">
-                                {aiSummary}
+                                {aiSummary || 'Summary not available.'}
                             </div>
                         </div>
 
@@ -175,7 +208,7 @@ ${results.map((r, i) => `${i + 1}. ${r.title} - ${r.url}`).join('\n')}
                     <div className="text-center text-slate-400 py-20">
                         <span className="text-5xl block mb-4">🔬</span>
                         <p className="text-lg">Enter a topic above to start research</p>
-                        <p className="text-sm mt-2">Data will be gathered from across the web</p>
+                        <p className="text-sm mt-2">Data will be gathered from DuckDuckGo & Summarized by Gemini</p>
                     </div>
                 </div>
             )}

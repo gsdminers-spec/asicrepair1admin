@@ -1,8 +1,15 @@
 
 'use client';
 
-import { useState } from 'react';
-import { BLOG_TREE_DATA, Phase, Category, Subcategory, Topic, getPhaseStats } from '@/lib/blogTreeData';
+import { useState, useEffect } from 'react';
+import {
+    fetchFullBlogTree,
+    addPhase, renamePhase, deletePhase,
+    addCategory, renameCategory, deleteCategory,
+    addSubcategory, renameSubcategory, deleteSubcategory,
+    addTopic, renameTopic, deleteTopic
+} from '@/lib/blogTreeActions';
+import { Phase, Category, Subcategory, Topic } from '@/lib/supabase';
 
 interface BlogTreeProps {
     onSelectTopic?: (topic: string) => void;
@@ -10,18 +17,60 @@ interface BlogTreeProps {
 
 type View = 'phases' | 'categories' | 'subcategories' | 'topics';
 
+// Extended TYPES to support nested structure in UI
+type UIPhase = Phase & { categories: UICategory[] };
+type UICategory = Category & { subcategories: UISubcategory[] };
+type UISubcategory = Subcategory & { topics: Topic[] };
+
 export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
+    const [loading, setLoading] = useState(true);
+    const [data, setData] = useState<UIPhase[]>([]);
+
     const [view, setView] = useState<View>('phases');
-    const [selectedPhase, setSelectedPhase] = useState<Phase | null>(null);
-    const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-    const [selectedSubcategory, setSelectedSubcategory] = useState<Subcategory | null>(null);
+    const [selectedPhase, setSelectedPhase] = useState<UIPhase | null>(null);
+    const [selectedCategory, setSelectedCategory] = useState<UICategory | null>(null);
+    const [selectedSubcategory, setSelectedSubcategory] = useState<UISubcategory | null>(null);
 
     // CRUD Modal State
     const [showMenu, setShowMenu] = useState(false);
-    const [modalAction, setModalAction] = useState<'add' | 'rename' | 'delete' | null>(null);
-    const [modalInput, setModalInput] = useState('');
 
-    // --- Navigation ---
+    // Refresh Data Helper
+    const refreshData = async () => {
+        setLoading(true);
+        const tree = await fetchFullBlogTree();
+        // Use type assertion here as fetchFullBlogTree returns the nested structure we need
+        setData(tree as unknown as UIPhase[]);
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        refreshData();
+    }, []);
+
+    // --- Navigation & Syncing Selection ---
+    // When data refreshes, we need to re-find the selected items to keep view active
+    // --- Navigation & Syncing Selection ---
+    // When data refreshes, we need to re-find the selected items to keep view active
+    useEffect(() => {
+        if (selectedPhase) {
+            const p = data.find(p => p.id === selectedPhase.id);
+            if (p) {
+                setSelectedPhase(p);
+                if (selectedCategory) {
+                    const c = p.categories.find(c => c.id === selectedCategory.id);
+                    if (c) {
+                        setSelectedCategory(c);
+                        if (selectedSubcategory) {
+                            const s = c.subcategories.find(s => s.id === selectedSubcategory.id);
+                            if (s) setSelectedSubcategory(s);
+                        }
+                    }
+                }
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data]);
+
     const goToPhases = () => {
         setView('phases');
         setSelectedPhase(null);
@@ -29,22 +78,60 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
         setSelectedSubcategory(null);
     };
 
-    const goToCategories = (phase: Phase) => {
+    const goToCategories = (phase: UIPhase) => {
         setSelectedPhase(phase);
         setView('categories');
     };
 
-    const goToSubcategories = (category: Category) => {
+    const goToSubcategories = (category: UICategory) => {
         setSelectedCategory(category);
         setView('subcategories');
     };
 
-    const goToTopics = (subcategory: Subcategory) => {
+    const goToTopics = (subcategory: UISubcategory) => {
         setSelectedSubcategory(subcategory);
         setView('topics');
     };
 
-    // --- Breadcrumb ---
+    // --- CRUD Handlers ---
+    const handleCrudAction = async (action: 'add' | 'rename' | 'delete', level: string, parentId?: string, currentId?: string, currentName?: string) => {
+        setShowMenu(false);
+
+        // DELETE
+        if (action === 'delete') {
+            if (!confirm(`Are you sure you want to delete this ${level}?`)) return;
+            if (level === 'Phase' && currentId) await deletePhase(currentId);
+            if (level === 'Category' && currentId) await deleteCategory(currentId);
+            if (level === 'Sub-category' && currentId) await deleteSubcategory(currentId);
+            if (level === 'Topic' && currentId) await deleteTopic(currentId);
+            await refreshData();
+            if (level === 'Phase') goToPhases(); // Reset View
+            if (level === 'Category') setView('categories'); // Go up
+            return;
+        }
+
+        // ADD / RENAME
+        const promptText = action === 'add' ? `Enter new ${level} name:` : `Rename ${level} to:`;
+        const input = prompt(promptText, action === 'rename' ? currentName : '');
+        if (!input) return;
+
+        if (action === 'add') {
+            if (level === 'Phase') await addPhase(input, data.length + 1);
+            if (level === 'Category' && parentId) await addCategory(parentId, input);
+            if (level === 'Sub-category' && parentId) await addSubcategory(parentId, input);
+            if (level === 'Topic' && parentId) await addTopic(parentId, input);
+        }
+        else if (action === 'rename' && currentId) {
+            if (level === 'Phase') await renamePhase(currentId, input);
+            if (level === 'Category') await renameCategory(currentId, input);
+            if (level === 'Sub-category') await renameSubcategory(currentId, input);
+            if (level === 'Topic') await renameTopic(currentId, input);
+        }
+        await refreshData();
+    };
+
+    // --- Render Helpers ---
+
     const renderBreadcrumb = () => (
         <div className="flex items-center gap-2 text-sm text-slate-500 mb-6">
             <button className="hover:text-indigo-600" onClick={goToPhases}>🌳 Blog Tree</button>
@@ -73,16 +160,7 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
         </div>
     );
 
-    // --- CRUD Actions (Placeholder) ---
-    const handleCrudAction = (action: 'add' | 'rename' | 'delete', target: string) => {
-        setModalAction(action);
-        setModalInput('');
-        alert(`[Demo] ${action.toUpperCase()} ${target} — This would open a modal in production.`);
-        setShowMenu(false);
-    };
-
-    // --- Hamburger Menu ---
-    const renderHamburgerMenu = (level: string) => (
+    const renderHamburgerMenu = (level: string, parentId?: string, currentId?: string, currentName?: string) => (
         <div className="relative">
             <button
                 className="p-2 hover:bg-slate-100 rounded text-slate-500"
@@ -92,19 +170,25 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
             </button>
             {showMenu && (
                 <div className="absolute right-0 top-10 bg-white border shadow-lg rounded-lg z-50 w-48">
-                    <button className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm" onClick={() => handleCrudAction('add', level)}>
+                    <button className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm" onClick={() => handleCrudAction('add', level, parentId)}>
                         ➕ Add {level}
                     </button>
-                    <button className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm" onClick={() => handleCrudAction('rename', level)}>
-                        ✏️ Rename {level}
-                    </button>
-                    <button className="w-full text-left px-4 py-2 hover:bg-red-50 text-sm text-red-600" onClick={() => handleCrudAction('delete', level)}>
-                        🗑️ Delete {level}
-                    </button>
+                    {currentId && (
+                        <>
+                            <button className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm" onClick={() => handleCrudAction('rename', level, undefined, currentId, currentName)}>
+                                ✏️ Rename {level}
+                            </button>
+                            <button className="w-full text-left px-4 py-2 hover:bg-red-50 text-sm text-red-600" onClick={() => handleCrudAction('delete', level, undefined, currentId)}>
+                                🗑️ Delete {level}
+                            </button>
+                        </>
+                    )}
                 </div>
             )}
         </div>
     );
+
+    if (loading && data.length === 0) return <div className="p-8 text-center text-slate-500">⏳ Loading Blog Tree...</div>;
 
     // --- PHASES VIEW ---
     if (view === 'phases') {
@@ -116,8 +200,13 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-6">
-                    {BLOG_TREE_DATA.map(phase => {
-                        const stats = getPhaseStats(phase);
+                    {data.map(phase => {
+                        const stats = {
+                            cat: phase.categories.length,
+                            sub: phase.categories.reduce((acc, c) => acc + c.subcategories.length, 0),
+                            // Flatten topics
+                            topics: phase.categories.flatMap(c => c.subcategories.flatMap(s => s.topics)).length
+                        }
                         return (
                             <div
                                 key={phase.id}
@@ -126,14 +215,17 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                             >
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <h3 className="font-bold text-lg text-slate-800">📁 {phase.name}</h3>
+                                        <h3 className="font-bold text-lg text-slate-800">{phase.name}</h3>
                                         <p className="text-slate-500 text-sm mt-1">{phase.description}</p>
                                     </div>
-                                    <span className="text-2xl">→</span>
+                                    <div className="flex gap-2">
+                                        <button className="text-xs p-1 hover:bg-slate-100 rounded" onClick={(e) => { e.stopPropagation(); handleCrudAction('rename', 'Phase', undefined, phase.id, phase.name) }}>✏️</button>
+                                        <button className="text-xs p-1 hover:bg-red-100 text-red-500 rounded" onClick={(e) => { e.stopPropagation(); handleCrudAction('delete', 'Phase', undefined, phase.id) }}>🗑️</button>
+                                    </div>
                                 </div>
                                 <div className="mt-4 flex gap-4 text-xs text-slate-500">
-                                    <span className="bg-slate-100 px-2 py-1 rounded">{stats.articles} Articles</span>
-                                    <span className="bg-slate-100 px-2 py-1 rounded">{stats.categories} Categories</span>
+                                    <span className="bg-slate-100 px-2 py-1 rounded">{stats.topics} Articles</span>
+                                    <span className="bg-slate-100 px-2 py-1 rounded">{stats.cat} Categories</span>
                                 </div>
                             </div>
                         );
@@ -149,8 +241,8 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
             <div className="flex flex-col gap-6">
                 {renderBreadcrumb()}
                 <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-bold text-slate-800">📁 {selectedPhase.name}: {selectedPhase.description}</h2>
-                    {renderHamburgerMenu('Category')}
+                    <h2 className="text-lg font-bold text-slate-800">📁 {selectedPhase.name}</h2>
+                    {renderHamburgerMenu('Category', selectedPhase.id)}
                 </div>
 
                 <div className="flex flex-col gap-4">
@@ -169,7 +261,10 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                                         <span className="text-xs text-slate-500">{articleCount} articles • {cat.subcategories.length} sub-categories</span>
                                     </div>
                                 </div>
-                                <span className="text-slate-400">→</span>
+                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                    <button onClick={() => handleCrudAction('rename', 'Category', undefined, cat.id, cat.name)} className="p-1 hover:bg-slate-100">✏️</button>
+                                    <button onClick={() => handleCrudAction('delete', 'Category', undefined, cat.id)} className="p-1 hover:bg-red-100 text-red-500">🗑️</button>
+                                </div>
                             </div>
                         );
                     })}
@@ -185,7 +280,7 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                 {renderBreadcrumb()}
                 <div className="flex justify-between items-center">
                     <h2 className="text-lg font-bold text-slate-800">⚡ {selectedCategory.name}</h2>
-                    {renderHamburgerMenu('Sub-category')}
+                    {renderHamburgerMenu('Sub-category', selectedCategory.id)}
                 </div>
 
                 <div className="flex flex-col gap-3">
@@ -202,7 +297,10 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                                     <span className="text-xs text-slate-500">{sub.topics.length} articles</span>
                                 </div>
                             </div>
-                            <span className="text-slate-400">→</span>
+                            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                <button onClick={() => handleCrudAction('rename', 'Sub-category', undefined, sub.id, sub.name)} className="p-1 hover:bg-slate-100">✏️</button>
+                                <button onClick={() => handleCrudAction('delete', 'Sub-category', undefined, sub.id)} className="p-1 hover:bg-red-100 text-red-500">🗑️</button>
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -217,7 +315,7 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                 {renderBreadcrumb()}
                 <div className="flex justify-between items-center">
                     <h2 className="text-lg font-bold text-slate-800">📂 {selectedSubcategory.name}</h2>
-                    {renderHamburgerMenu('Topic')}
+                    {renderHamburgerMenu('Topic', selectedSubcategory.id)}
                 </div>
 
                 <div className="card p-0 overflow-hidden">
@@ -256,13 +354,13 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                                         )}
                                         <button
                                             className="text-slate-400 hover:text-slate-600 text-xs"
-                                            onClick={(e) => { e.stopPropagation(); handleCrudAction('rename', 'Topic'); }}
+                                            onClick={(e) => { e.stopPropagation(); handleCrudAction('rename', 'Topic', undefined, topic.id, topic.title); }}
                                         >
                                             ✏️
                                         </button>
                                         <button
                                             className="text-red-400 hover:text-red-600 text-xs"
-                                            onClick={(e) => { e.stopPropagation(); handleCrudAction('delete', 'Topic'); }}
+                                            onClick={(e) => { e.stopPropagation(); handleCrudAction('delete', 'Topic', undefined, topic.id); }}
                                         >
                                             🗑️
                                         </button>
