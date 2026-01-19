@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { PublishItem, Article } from './supabase';
+import { marked } from 'marked';
 
 // Fetch publish queue with article details
 export async function fetchPublishQueue(): Promise<(PublishItem & { articles: Article })[]> {
@@ -50,13 +51,55 @@ export async function publishNow(queueId: string, articleId: string): Promise<{ 
     }
 
     // Update article status
-    const { error: articleError } = await supabase
+    const { data: articleData, error: articleError } = await supabase
         .from('articles')
         .update({
             status: 'published',
             publish_date: new Date().toISOString()
         })
-        .eq('id', articleId);
+        .eq('id', articleId)
+        .select('*')
+        .single();
+
+    if (articleError || !articleData) {
+        console.error('Error updating article:', articleError);
+        return { success: false, error: articleError?.message || 'Article not found' };
+    }
+
+    // --- SYNC TO PUBLIC BLOG ---
+    try {
+
+        // Generate Slug (simple slugify)
+        const slug = articleData.title
+            .toLowerCase()
+            .replace(/[^\w\s-]/g, '')
+            .replace(/\s+/g, '-');
+
+        // Convert Markdown to HTML
+        const contentHtml = marked.parse(articleData.content || '');
+
+        const { error: syncError } = await supabase
+            .from('blog_articles')
+            .upsert({
+                title: articleData.title,
+                slug: slug,
+                content: articleData.content,
+                content_html: contentHtml,
+                category: articleData.category || 'Uncategorized',
+                is_published: true,
+                published_date: new Date().toISOString(),
+                updated_date: new Date().toISOString()
+            }, { onConflict: 'slug' });
+
+        if (syncError) {
+            console.error('Error syncing to public blog:', syncError);
+            return { success: false, error: 'Published locally but failed to sync to public site: ' + syncError.message };
+        }
+
+    } catch (err) {
+        console.error('Error in sync process:', err);
+        return { success: false, error: 'Published locally but sync failed.' };
+    }
 
     if (articleError) {
         console.error('Error updating article:', articleError);
