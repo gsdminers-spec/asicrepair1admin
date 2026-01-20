@@ -143,68 +143,118 @@ export default function ArticlesManager({ onNavigateToPublish }: { onNavigateToP
                     </div>
                 </div>
             ) : (
-                // TABLE VIEW
+                // ARTICLE LIST VIEW
                 <div className="card p-0 overflow-hidden">
                     {articles.length === 0 ? (
                         <div className="p-8 text-center text-slate-500">
                             No articles yet. Save articles from Claude Output to see them here.
                         </div>
                     ) : (
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 border-b border-slate-200">
-                                <tr>
-                                    <th className="p-4 font-semibold text-slate-600">#</th>
-                                    <th className="p-4 font-semibold text-slate-600">Title</th>
-                                    <th className="p-4 font-semibold text-slate-600">Category</th>
-                                    <th className="p-4 font-semibold text-slate-600">Status</th>
-                                    <th className="p-4 font-semibold text-slate-600">Date</th>
-                                    <th className="p-4 font-semibold text-slate-600 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
+                        <>
+                            {/* Mobile Card View */}
+                            <div className="md:hidden flex flex-col divide-y divide-slate-100">
                                 {articles.map((article, index) => (
-                                    <tr key={article.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="p-4 text-slate-400">{index + 1}</td>
-                                        <td className="p-4 font-medium text-slate-800">{article.title}</td>
-                                        <td className="p-4 text-slate-500">
-                                            <span className="badge badge-blue">{article.category || 'Uncategorized'}</span>
-                                        </td>
-                                        <td className="p-4">
-                                            {article.status === 'published' && <span className="badge badge-green">Published</span>}
-                                            {article.status === 'scheduled' && <span className="badge badge-blue">Scheduled</span>}
-                                            {article.status === 'ready' && <span className="badge badge-gray">Ready</span>}
-                                            {article.status === 'draft' && <span className="badge badge-gray">Draft</span>}
-                                        </td>
-                                        <td className="p-4 text-slate-500">{formatDate(article.created_at)}</td>
-                                        <td className="p-4 text-right space-x-2">
+                                    <div key={article.id} className="p-4 hover:bg-slate-50 active:bg-slate-100">
+                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-xs text-slate-400 mr-2">#{index + 1}</span>
+                                                <h4 className="font-medium text-slate-800 text-sm line-clamp-2">{article.title}</h4>
+                                            </div>
+                                            <div className="flex-shrink-0">
+                                                {article.status === 'published' && <span className="badge badge-green text-xs">Published</span>}
+                                                {article.status === 'scheduled' && <span className="badge badge-blue text-xs">Scheduled</span>}
+                                                {article.status === 'ready' && <span className="badge badge-gray text-xs">Ready</span>}
+                                                {article.status === 'draft' && <span className="badge badge-gray text-xs">Draft</span>}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                                            <span className="badge badge-blue text-xs">{article.category || 'Uncategorized'}</span>
+                                            <span>•</span>
+                                            <span>{formatDate(article.created_at)}</span>
+                                        </div>
+                                        <div className="flex gap-2">
                                             <button
-                                                className="text-indigo-600 hover:text-indigo-800 font-medium"
+                                                className="btn btn-secondary text-xs py-1.5 px-3 flex-1"
                                                 onClick={() => setViewingArticle(article)}
-                                                title="View Preview"
                                             >
                                                 👁️ View
                                             </button>
                                             <button
-                                                className="text-slate-400 hover:text-slate-600"
+                                                className="btn btn-secondary text-xs py-1.5 px-3"
                                                 onClick={() => handleCopy(article.content)}
-                                                title="Copy markdown"
                                             >
                                                 📋
                                             </button>
                                             {article.status !== 'scheduled' && article.status !== 'published' && (
                                                 <button
-                                                    className="text-green-600 hover:text-green-800 font-medium ml-2"
+                                                    className="btn btn-primary text-xs py-1.5 px-3 flex-1"
                                                     onClick={() => handlePublishClick(article)}
-                                                    title="Move to Publish Hub"
                                                 >
                                                     🚀 Publish
                                                 </button>
                                             )}
-                                        </td>
-                                    </tr>
+                                        </div>
+                                    </div>
                                 ))}
-                            </tbody>
-                        </table>
+                            </div>
+
+                            {/* Desktop Table View */}
+                            <table className="hidden md:table w-full text-left text-sm">
+                                <thead className="bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="p-4 font-semibold text-slate-600">#</th>
+                                        <th className="p-4 font-semibold text-slate-600">Title</th>
+                                        <th className="p-4 font-semibold text-slate-600">Category</th>
+                                        <th className="p-4 font-semibold text-slate-600">Status</th>
+                                        <th className="p-4 font-semibold text-slate-600">Date</th>
+                                        <th className="p-4 font-semibold text-slate-600 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {articles.map((article, index) => (
+                                        <tr key={article.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 text-slate-400">{index + 1}</td>
+                                            <td className="p-4 font-medium text-slate-800">{article.title}</td>
+                                            <td className="p-4 text-slate-500">
+                                                <span className="badge badge-blue">{article.category || 'Uncategorized'}</span>
+                                            </td>
+                                            <td className="p-4">
+                                                {article.status === 'published' && <span className="badge badge-green">Published</span>}
+                                                {article.status === 'scheduled' && <span className="badge badge-blue">Scheduled</span>}
+                                                {article.status === 'ready' && <span className="badge badge-gray">Ready</span>}
+                                                {article.status === 'draft' && <span className="badge badge-gray">Draft</span>}
+                                            </td>
+                                            <td className="p-4 text-slate-500">{formatDate(article.created_at)}</td>
+                                            <td className="p-4 text-right space-x-2">
+                                                <button
+                                                    className="text-indigo-600 hover:text-indigo-800 font-medium"
+                                                    onClick={() => setViewingArticle(article)}
+                                                    title="View Preview"
+                                                >
+                                                    👁️ View
+                                                </button>
+                                                <button
+                                                    className="text-slate-400 hover:text-slate-600"
+                                                    onClick={() => handleCopy(article.content)}
+                                                    title="Copy markdown"
+                                                >
+                                                    📋
+                                                </button>
+                                                {article.status !== 'scheduled' && article.status !== 'published' && (
+                                                    <button
+                                                        className="text-green-600 hover:text-green-800 font-medium ml-2"
+                                                        onClick={() => handlePublishClick(article)}
+                                                        title="Move to Publish Hub"
+                                                    >
+                                                        🚀 Publish
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </>
                     )}
                 </div>
             )}
