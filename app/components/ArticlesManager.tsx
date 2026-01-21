@@ -155,6 +155,10 @@ export default function ArticlesManager({ onNavigateToPublish }: { onNavigateToP
                     <ArticlePreview
                         article={viewingArticle}
                         onClose={() => setViewingArticle(null)}
+                        onPublish={handlePublishClick}
+                        onUnpublish={handleUnpublish}
+                        onDelete={handleDelete}
+                        onCopy={handleCopy}
                     />
                 </div>
             ) : (

@@ -13,7 +13,16 @@ function getReadingTime(text: string) {
     return Math.ceil(words / wpm);
 }
 
-export default function ArticlePreview({ article, onClose }: { article: Article; onClose: () => void }) {
+export interface ArticlePreviewProps {
+    article: Article;
+    onClose: () => void;
+    onPublish: (article: Article) => void;
+    onUnpublish: (article: Article) => void;
+    onDelete: (article: Article) => void;
+    onCopy: (content: string) => void;
+}
+
+export default function ArticlePreview({ article, onClose, onPublish, onUnpublish, onDelete, onCopy }: ArticlePreviewProps) {
     const htmlContent = useMemo(() => {
         return marked.parse(article.content) as string;
     }, [article.content]);
@@ -36,7 +45,7 @@ export default function ArticlePreview({ article, onClose }: { article: Article;
             }}
         >
             {/* Toolbar / Header within Preview */}
-            <div className="sticky top-0 z-10 bg-[#050505]/80 backdrop-blur-md border-b border-[#30363D] p-4 flex justify-between items-center">
+            <div className="sticky top-0 z-10 bg-[#050505]/95 backdrop-blur-md border-b border-[#30363D] p-4 flex justify-between items-center shadow-md">
                 <button
                     onClick={onClose}
                     className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm font-medium"
@@ -44,8 +53,40 @@ export default function ArticlePreview({ article, onClose }: { article: Article;
                     <ArrowLeft className="w-4 h-4" />
                     Back to Editor
                 </button>
-                <div className="text-xs font-mono text-gray-500">
-                    PREVIEW MODE
+
+                {/* ADMIN ACTIONS TOOLBAR */}
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => onCopy(article.content)}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 rounded-md border border-white/10 transition-all"
+                    >
+                        📋 Copy
+                    </button>
+
+                    {article.status !== 'scheduled' && article.status !== 'published' && (
+                        <button
+                            onClick={() => onPublish(article)}
+                            className="px-3 py-1.5 text-xs font-medium text-black bg-[#F7931A] hover:bg-[#F7931A]/90 rounded-md transition-all shadow-[0_0_10px_rgba(247,147,26,0.2)]"
+                        >
+                            🚀 Publish
+                        </button>
+                    )}
+
+                    {article.status === 'published' && (
+                        <button
+                            onClick={() => onUnpublish(article)}
+                            className="px-3 py-1.5 text-xs font-medium text-orange-400 border border-orange-400/30 hover:bg-orange-400/10 rounded-md transition-all"
+                        >
+                            🔙 Unpublish
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => onDelete(article)}
+                        className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-500/30 hover:bg-red-500/10 rounded-md transition-all ml-2"
+                    >
+                        🗑️ Delete
+                    </button>
                 </div>
             </div>
 
