@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { marked } from 'marked';
 import { NextRequest, NextResponse } from 'next/server';
-import { wrapWithResponsiveStyles } from '@/lib/blogStyles';
 
 // Type for the joined query result
 interface QueueItemWithArticle {
@@ -127,16 +126,16 @@ export async function GET(request: NextRequest) {
 
                 // Convert markdown to HTML
                 const contentHtml = marked.parse(article.content || '');
-                const styledHtml = wrapWithResponsiveStyles(contentHtml as string);
 
                 // Upsert to blog_articles (public blog table)
+                // Clean HTML - website has its own responsive prose styling
                 const { error: upsertError } = await supabase
                     .from('blog_articles')
                     .upsert({
                         title: article.title,
                         slug: slug,
                         content: article.content,
-                        content_html: styledHtml,
+                        content_html: contentHtml as string,
                         category: article.category || 'Uncategorized',
                         is_published: true,
                         published_date: new Date().toISOString(),

@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { marked } from 'marked';
-import { wrapWithResponsiveStyles } from '@/lib/blogStyles';
 
 export async function POST(request: Request) {
     try {
@@ -57,15 +56,15 @@ export async function POST(request: Request) {
         // marked.parse can be synchronous or return a Promise depending on options/extensions.
         // Awaiting it is safe.
         const contentHtml = await marked.parse(articleData.content || '');
-        const styledHtml = wrapWithResponsiveStyles(contentHtml as string);
 
+        // Note: We store clean HTML - the public website has its own prose styling classes
         const { error: syncError } = await supabase
             .from('blog_articles')
             .upsert({
                 title: articleData.title,
                 slug: slug,
                 content: articleData.content,
-                content_html: styledHtml,
+                content_html: contentHtml as string,
                 id: articleData.id, // Ensure we map ID if schema allows, or let it auto-gen/match by slug
                 // Note: If blog_articles schema has different ID, remove this line.
                 // Assuming upsert on 'slug' handles it.
