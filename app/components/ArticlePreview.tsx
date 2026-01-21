@@ -32,21 +32,10 @@ export default function ArticlePreview({ article, onClose, onPublish, onUnpublis
 
     return (
         <div
-            className="h-full flex flex-col overflow-y-auto custom-scrollbar selection:bg-cyan-500/30 selection:text-cyan-200"
-            style={{
-                backgroundColor: '#050505',
-                backgroundImage: `
-                    linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px),
-                    radial-gradient(circle at 50% 0%, rgba(0, 243, 255, 0.1), transparent 50%),
-                    radial-gradient(circle at 0% 50%, rgba(208, 0, 255, 0.05), transparent 40%)
-                `,
-                backgroundSize: '50px 50px, 50px 50px, 100% 100%, 100% 100%',
-                backgroundAttachment: 'fixed'
-            }}
+            className="h-full flex flex-col overflow-y-auto custom-scrollbar selection:bg-cyan-500/30 selection:text-cyan-200 bg-[#0a0a0a] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"
         >
             {/* Toolbar / Header within Preview */}
-            <div className="sticky top-0 z-10 bg-[#050505]/95 backdrop-blur-md border-b border-[#30363D] p-4 flex justify-between items-center shadow-md">
+            <div className="sticky top-0 z-10 bg-[#0a0a0a]/95 backdrop-blur-md border-b border-[#30363D] p-4 flex justify-between items-center shadow-md">
                 <button
                     onClick={onClose}
                     className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm font-medium"
@@ -98,24 +87,24 @@ export default function ArticlePreview({ article, onClose, onPublish, onUnpublis
                 </div>
             </div>
 
-            <div className="p-8 md:p-12 max-w-4xl mx-auto w-full">
-                <article className="bg-[#161B22] rounded-xl border border-[#30363D] overflow-hidden shadow-2xl">
-                    <div className="p-8 md:p-12">
+            <div className="p-8 md:p-12 max-w-7xl mx-auto w-full">
+                <article className="bg-[#0a0a0a] rounded-xl border border-[#30363D] overflow-hidden shadow-2xl">
+                    <div className="p-8 md:p-12 lg:p-16">
                         {/* Category Badge */}
                         <div className="flex items-center gap-3 mb-6">
-                            <span className="px-3 py-1 text-sm font-semibold rounded-full bg-[#F7931A]/10 text-[#F7931A]">
+                            <span className="px-3 py-1 text-xs font-bold tracking-wider uppercase rounded-full bg-[#F7931A]/10 text-[#F7931A]">
                                 {article.category || 'Uncategorized'}
                             </span>
                         </div>
 
                         {/* Title */}
-                        <h1 className="text-3xl md:text-4xl font-bold text-white mb-6 leading-tight">
+                        <h1 className="text-3xl md:text-5xl font-extrabold text-white mb-6 leading-tight tracking-tight">
                             {article.title}
                         </h1>
 
                         {/* Metadata */}
-                        <div className="flex flex-wrap items-center gap-4 mb-8 pb-8 border-b border-[#30363D]">
-                            <div className="flex items-center gap-2 text-gray-400 text-sm">
+                        <div className="flex flex-wrap items-center gap-6 mb-8 text-gray-400 text-sm font-medium">
+                            <div className="flex items-center gap-2">
                                 <Calendar className="w-4 h-4" />
                                 <span>{new Date(article.created_at || Date.now()).toLocaleDateString('en-US', {
                                     year: 'numeric',
@@ -123,27 +112,29 @@ export default function ArticlePreview({ article, onClose, onPublish, onUnpublis
                                     day: 'numeric'
                                 })}</span>
                             </div>
-                            <div className="flex items-center gap-2 text-gray-400 text-sm">
+                            <div className="flex items-center gap-2">
                                 <Clock className="w-4 h-4" />
                                 <span>{readingTime} min read</span>
                             </div>
                         </div>
 
+                        {/* Divider */}
+                        <div className="w-full h-px bg-[#30363D] mb-10"></div>
+
                         {/* Article Content - THE HOLY GRAIL STYLES */}
                         <div
-                            className="prose prose-invert prose-lg max-w-none
-                                prose-headings:text-white prose-headings:font-bold
-                                prose-h2:text-2xl prose-h2:mt-8 prose-h2:mb-4 prose-h2:border-b prose-h2:border-[#30363D] prose-h2:pb-2
-                                prose-h3:text-xl prose-h3:mt-6 prose-h3:mb-3
-                                prose-p:text-gray-300 prose-p:leading-relaxed prose-p:mb-4
-                                prose-a:text-[#2ECC71] prose-a:no-underline hover:prose-a:underline
-                                prose-strong:text-white prose-strong:font-semibold
-                                prose-ul:text-gray-300 prose-ul:my-4
-                                prose-ol:text-gray-300 prose-ol:my-4
-                                prose-li:my-2
-                                prose-code:text-[#F7931A] prose-code:bg-[#0E1116] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-                                prose-pre:bg-[#0E1116] prose-pre:border prose-pre:border-[#30363D]
-                                [&>blockquote]:border-l-4 [&>blockquote]:border-[#F7931A] [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:text-gray-400"
+                            className="prose prose-invert md:prose-xl max-w-none
+                                prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight
+                                prose-h2:text-2xl md:prose-h2:text-3xl prose-h2:mt-12 prose-h2:mb-6 prose-h2:pb-4 prose-h2:border-b prose-h2:border-[#30363D]
+                                prose-h3:text-xl md:prose-h3:text-2xl prose-h3:mt-8 prose-h3:mb-4
+                                prose-p:text-gray-300 prose-p:leading-8 prose-p:mb-6 prose-p:text-lg
+                                prose-a:text-[#F7931A] prose-a:no-underline hover:prose-a:underline
+                                prose-strong:text-white prose-strong:font-bold
+                                prose-ul:text-gray-300 prose-ul:my-6 prose-ul:list-disc prose-ul:pl-6
+                                prose-ol:text-gray-300 prose-ol:my-6 prose-ol:list-decimal prose-ol:pl-6
+                                prose-li:my-2 prose-li:text-lg
+                                prose-code:text-[#F7931A] prose-code:bg-[#161B22] prose-code:px-2 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm prose-code:font-mono prose-code:border prose-code:border-[#30363D]
+                                prose-pre:bg-[#161B22] prose-pre:border prose-pre:border-[#30363D] prose-pre:p-4 prose-pre:rounded-lg"
                             dangerouslySetInnerHTML={{ __html: htmlContent }}
                         />
 
