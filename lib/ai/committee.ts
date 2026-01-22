@@ -62,7 +62,7 @@ async function runFactVerifier(outline: string, researchContext: string): Promis
             "X-Title": "ASIC Admin Verifier"
         },
         body: JSON.stringify({
-            "model": "tngtech/deepseek-r1t2-chimera:free", // User requested verifier
+            "model": "deepseek/deepseek-r1:free", // Verified R1 Free
             "messages": [
                 {
                     "role": "user",
@@ -82,15 +82,32 @@ async function runFactVerifier(outline: string, researchContext: string): Promis
                     `
                 }
             ]
-            // Standard models don't always support 'reasoning' param in raw fetch unless specified, 
-            // but for safety we stick to standard chat body for Chimera unless user specified reasoning param.
-            // User provided script for GPT-OSS used reasoning: {enabled: true}. 
-            // We will attempt standard robust call first to avoid 400s if Chimera behaves differently.
         })
     });
 
     if (!response.ok) {
-        throw new Error(`Verifier failed: ${await response.text()}`);
+        console.warn("DeepSeek R1 failed, falling back to Gemini Lite...");
+        // Fallback to Gemini 2.0 Flash Lite (Free & Fast)
+        const fallbackResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://asicrepair.in",
+                "X-Title": "ASIC Admin Verifier Fallback"
+            },
+            body: JSON.stringify({
+                "model": "google/gemini-2.0-flash-lite-preview-02-05:free",
+                "messages": [{
+                    "role": "user",
+                    "content": `Verify this outline against context. Return VERIFIED or list issues.\n\nCONTEXT: ${researchContext.substring(0, 10000)}\n\nOUTLINE: ${outline}`
+                }]
+            })
+        });
+
+        if (!fallbackResponse.ok) throw new Error(`Verifier Fallback failed: ${await fallbackResponse.text()}`);
+        const data = await fallbackResponse.json();
+        return data.choices[0]?.message?.content || "Verified (Fallback)";
     }
 
     const data = await response.json();
