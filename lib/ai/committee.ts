@@ -52,66 +52,75 @@ async function runFactVerifier(outline: string, researchContext: string): Promis
     console.log("🕵️ [Verifier] Chimera R1 starting...");
     const apiKey = process.env.OPENROUTER_API_KEY;
 
-    // Use Chimera R1 (DeepSeek Logic) to verify
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://asicrepair.in",
-            "X-Title": "ASIC Admin Verifier"
-        },
-        body: JSON.stringify({
-            "model": "deepseek/deepseek-r1:free", // Verified R1 Free
-            "messages": [
-                {
-                    "role": "user",
-                    "content": `
-                    CONTEXT: ${researchContext.substring(0, 10000)}
-                    
-                    PROPOSED OUTLINE:
-                    ${outline}
-                    
-                    TASK:
-                    Verify this outline against the facts.
-                    1. Are there any technical hallucinations?
-                    2. Is the structure logical?
-                    3. Are we missing critical warnings?
-                    
-                    If good, return "VERIFIED". If issues, list them.
-                    `
-                }
-            ]
-        })
-    });
-
-    if (!response.ok) {
-        console.warn("DeepSeek R1 failed, falling back to Gemini Lite...");
-        // Fallback to Gemini 2.0 Flash Lite (Free & Fast)
-        const fallbackResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // 1. Try Primary Model (Chimera R1 - User Preferred)
+    try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${apiKey}`,
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://asicrepair.in",
-                "X-Title": "ASIC Admin Verifier Fallback"
+                "X-Title": "ASIC Admin Verifier"
             },
             body: JSON.stringify({
-                "model": "google/gemini-2.0-flash-lite-preview-02-05:free",
-                "messages": [{
-                    "role": "user",
-                    "content": `Verify this outline against context. Return VERIFIED or list issues.\n\nCONTEXT: ${researchContext.substring(0, 10000)}\n\nOUTLINE: ${outline}`
-                }]
+                "model": "tngtech/deepseek-r1t2-chimera:free",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": `
+                        CONTEXT: ${researchContext.substring(0, 10000)}
+                        
+                        PROPOSED OUTLINE:
+                        ${outline}
+                        
+                        TASK:
+                        Verify this outline against the facts.
+                        1. Are there any technical hallucinations?
+                        2. Is the structure logical?
+                        3. Are we missing critical warnings?
+                        
+                        If good, return "VERIFIED". If issues, list them.
+                        `
+                    }
+                ]
             })
         });
 
-        if (!fallbackResponse.ok) throw new Error(`Verifier Fallback failed: ${await fallbackResponse.text()}`);
-        const data = await fallbackResponse.json();
-        return data.choices[0]?.message?.content || "Verified (Fallback)";
-    }
+        if (!response.ok) throw new Error(`Primary failed: ${await response.text()}`);
 
-    const data = await response.json();
-    return data.choices[0]?.message?.content || "No verification output.";
+        const data = await response.json();
+        return data.choices[0]?.message?.content || "Verified";
+
+    } catch (primaryError) {
+        console.warn("Primary Verifier (Chimera) failed, switching to Fallback...", primaryError);
+
+        // 2. Fallback Model (Gemini 2.0 Flash Lite)
+        try {
+            const fallbackResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://asicrepair.in",
+                    "X-Title": "ASIC Admin Verifier Fallback"
+                },
+                body: JSON.stringify({
+                    "model": "google/gemini-2.0-flash-lite-preview-02-05:free",
+                    "messages": [{
+                        "role": "user",
+                        "content": `Verify this outline against context. Return VERIFIED or list issues.\n\nCONTEXT: ${researchContext.substring(0, 10000)}\n\nOUTLINE: ${outline}`
+                    }]
+                })
+            });
+
+            if (!fallbackResponse.ok) throw new Error(`Fallback failed: ${await fallbackResponse.text()}`);
+            const data = await fallbackResponse.json();
+            return data.choices[0]?.message?.content || "Verified (Fallback)";
+
+        } catch (fallbackError: any) {
+            throw new Error(`All Verifiers Failed. Primary: ${primaryError}, Fallback: ${fallbackError.message}`);
+        }
+    }
 }
 
 // --- 3. FINAL WRITER ---
