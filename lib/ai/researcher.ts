@@ -1,9 +1,10 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 /**
- * THE RESEARCHER AGENT (Xiaomi Mimo V2 Flash via OpenRouter)
+ * THE RESEARCHER AGENT (Gemini 2.0 Flash via Google AI Studio)
  * 
  * Capability: PROCESSED REASONING
  * This agent reads raw search results and synthesizes them into a Master Fact Sheet.
- * It uses the 'reasoning' parameter to think through the connections.
  */
 
 interface ResearcherResponse {
@@ -13,11 +14,12 @@ interface ResearcherResponse {
 }
 
 export async function mimoResearch(query: string, context: string): Promise<ResearcherResponse> {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) throw new Error("Missing OPENROUTER_API_KEY");
+    const apiKey = process.env.GEMINI_API_KEY; // Switching to Google AI Studio Key
+    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    // Safety Truncation: Limit context to avoid hitting token limits (Gemini Lite has limits)
-    const MAX_CONTEXT = 30000;
+    // Safety Truncation: Gemini 2.0 has 1M context, but let's be safe and focused.
+    // 100k chars is plenty for a summary and safe for the Flash model.
+    const MAX_CONTEXT = 100000;
     const safeContext = context.length > MAX_CONTEXT
         ? context.substring(0, MAX_CONTEXT) + "\n...(Truncated)..."
         : context;
@@ -43,42 +45,21 @@ export async function mimoResearch(query: string, context: string): Promise<Rese
     `;
 
     try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://asicrepair.in",
-                "X-Title": "ASIC Admin Researcher"
-            },
-            body: JSON.stringify({
-                "model": "google/gemini-2.0-flash-exp:free",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            })
-        });
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
-        if (!response.ok) {
-            const err = await response.text();
-            throw new Error(`Gemini API Error: ${err}`);
-        }
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
 
-        const result = await response.json();
-        const choice = result.choices?.[0]?.message;
-
-        if (!choice || !choice.content) throw new Error("Received empty output from Researcher Model");
+        if (!text) throw new Error("Received empty output from Gemini Researcher");
 
         return {
-            content: choice.content,
-            reasoning: choice.reasoning_details || ""
+            content: text,
+            reasoning: "" // Google SDK doesn't expose reasoning trace same way as DeepSeek/OpenRouter
         };
 
     } catch (error: any) {
-        console.error("Research Agent Failed:", error);
+        console.error("Research Agent (Google) Failed:", error);
         return { content: "", error: error.message };
     }
 }
