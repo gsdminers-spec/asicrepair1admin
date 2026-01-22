@@ -18,6 +18,7 @@ export default function ResearchWorkspace({ initialTopic = '', onNavigateToPromp
     const [aiSummary, setAiSummary] = useState('');
     const [keyFindings, setKeyFindings] = useState<string[]>([]);
     const [isSaved, setIsSaved] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
 
     // Initial Load - Check if topic has data locally
     useEffect(() => {
@@ -37,6 +38,7 @@ export default function ResearchWorkspace({ initialTopic = '', onNavigateToPromp
                     setAiSummary(data.summary || '');
                     setKeyFindings(data.keyFindings || []);
                     setIsSaved(true);
+                    setHasSearched(true);
                 }
             }
         } catch (e) {
@@ -49,7 +51,9 @@ export default function ResearchWorkspace({ initialTopic = '', onNavigateToPromp
         setLoading(true);
         setKeyFindings([]);
         setAiSummary('');
+        setAiSummary('');
         setIsSaved(false);
+        setHasSearched(false);
 
         try {
             const res = await fetch('/api/scraper/search', {
@@ -60,20 +64,23 @@ export default function ResearchWorkspace({ initialTopic = '', onNavigateToPromp
 
             const data = await res.json();
             if (data.success) {
-                setResults(data.results || []);
-                setAiSummary(data.aiSummary || '');
+                setResults(data.results || []); // Moved this line here
+                setAiSummary(data.aiSummary || ''); // Moved this line here
                 setKeyFindings(data.keyFindings || []);
+                setHasSearched(true);
 
-                // Save to SESSION STORAGE (Temporary)
-                const sessionData = {
-                    results: data.results || [],
-                    summary: data.aiSummary || '',
-                    keyFindings: data.keyFindings || [],
-                    lastUpdated: new Date().toISOString()
-                };
-                sessionStorage.setItem(`researchData_${topic}`, JSON.stringify(sessionData));
+                if (data.results?.length > 0 || data.aiSummary) {
+                    // Save to SESSION STORAGE (Temporary)
+                    const sessionData = {
+                        results: data.results || [],
+                        summary: data.aiSummary || '',
+                        keyFindings: data.keyFindings || [],
+                        lastUpdated: new Date().toISOString()
+                    };
+                    sessionStorage.setItem(`researchData_${topic}`, JSON.stringify(sessionData));
 
-                setIsSaved(true);
+                    setIsSaved(true);
+                }
             } else {
                 alert('Search failed: ' + data.error);
             }
@@ -108,6 +115,7 @@ ${results.map((r, i) => `${i + 1}. ${r.title} - ${r.url}`).join('\n')}
         setKeyFindings([]);
         setAiSummary('');
         setIsSaved(false);
+        setHasSearched(false);
     };
 
     return (
@@ -217,14 +225,22 @@ ${results.map((r, i) => `${i + 1}. ${r.title} - ${r.url}`).join('\n')}
                 </div>
             )}
 
-            {/* Empty State */}
-            {results.length === 0 && !loading && (
+            {/* Empty State vs No Results State */}
+            {results.length === 0 && !aiSummary && !loading && (
                 <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center text-slate-400 py-20">
-                        <span className="text-5xl block mb-4">🔬</span>
-                        <p className="text-lg">Enter a topic above to start research</p>
-                        <p className="text-sm mt-2">Data will be gathered from DuckDuckGo & Summarized by Gemini</p>
-                    </div>
+                    {hasSearched ? (
+                        <div className="text-center text-slate-400 py-20">
+                            <span className="text-5xl block mb-4">🤷‍♂️</span>
+                            <p className="text-lg font-medium text-slate-600">No results found</p>
+                            <p className="text-sm mt-2">Try checking your spelling or a more general topic.</p>
+                        </div>
+                    ) : (
+                        <div className="text-center text-slate-400 py-20">
+                            <span className="text-5xl block mb-4">🔬</span>
+                            <p className="text-lg">Enter a topic above to start research</p>
+                            <p className="text-sm mt-2">Data will be gathered from DuckDuckGo & Summarized by Gemini</p>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

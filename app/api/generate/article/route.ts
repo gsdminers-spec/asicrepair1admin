@@ -1,61 +1,123 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { smartGenerate } from '@/lib/ai/openrouter';
+
+export const maxDuration = 300; // Allow 5 minutes for the full consensus chain
 
 export async function POST(req: Request) {
     try {
         const { topic, scrapedData, preferences } = await req.json();
-        const apiKey = process.env.GEMINI_API_KEY;
 
         if (!topic) {
             return NextResponse.json({ error: 'Topic is required' }, { status: 400 });
         }
 
-        if (!apiKey) {
-            return NextResponse.json({ error: 'GEMINI_API_KEY is not configured' }, { status: 500 });
-        }
-
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
+        // -----------------------------------------------------------------------
+        // STEP 0: PREPARE CONTEXT
+        // -----------------------------------------------------------------------
         const researchContext = scrapedData
             ? `RESEARCH DATA:\n${JSON.stringify(scrapedData)}\n\n`
-            : '';
+            : 'NO RESEARCH DATA AVAILABLE. Rely on your internal knowledge.\n\n';
 
         const userNotes = preferences?.additionalNotes
             ? `USER NOTES: ${preferences.additionalNotes}\n\n`
             : '';
 
-        const systemPrompt = `You are an expert technical blog writer for ASIC Repair (asicrepair.in).
-    
-    GOAL: Write a comprehensive, high-quality, base/draft blog article about: "${topic}".
-    
-    ${researchContext}
-    ${userNotes}
+        console.log(`🚀 [Deep Consensus] Starting generation for: "${topic}"`);
 
-    STRUCTURE:
-    1. Title: Engaging and SEO-optimized.
-    2. Introduction: Hook the reader, state the problem/topic clearly.
-    3. Technical Deep Dive: Detailed explanation, use the research data.
-    4. Step-by-Step Guide/Diagnostics: If applicable, practical steps.
-    5. Common Issues/Solutions: Troubleshooting.
-    6. Conclusion: Summary and call to action (visit asicrepair.in).
-    
-    TONE: Professional, Technical, Authoritative, yet accessible to technicians.
-    FORMAT: Markdown. Use H1, H2, H3, bullet points, and code blocks if needed.
+        // -----------------------------------------------------------------------
+        // STEP 1: THE RESEARCHER (Synthesize technical facts)
+        // -----------------------------------------------------------------------
+        const researcherPrompt = `
+        ANALYZE the provided research data and extraction Technical Facts for the topic: "${topic}".
+        
+        ${researchContext}
 
-    IMPORTANT: 
-    - Use the provided research data to ensure accuracy.
-    - If research is missing specific details, use your general knowledge but mark unsure areas with [Verification Needed].
-    - Do NOT output just a prompt. Output the ACTUAL ARTICLE DRAFT.
-    `;
+        OUTPUT FORMAT:
+        - List of Technical Specifications
+        - List of Common Failure Points
+        - List of Repair/Diagnostic Steps
+        - Any conflicting information found in the data
+        
+        Keep it purely factual. No fluff.
+        `;
 
-        const result = await model.generateContent(systemPrompt);
-        const generatedArticle = result.response.text();
+        const phase1Result = await smartGenerate('RESEARCHER', researcherPrompt, "You are a Senior Technical Researcher.");
+        console.log("✅ [Phase 1] Researcher complete.");
 
-        return NextResponse.json({ success: true, article: generatedArticle });
+        // -----------------------------------------------------------------------
+        // STEP 2: THE REASONER (Deep Dive & Logic Check)
+        // -----------------------------------------------------------------------
+        const reasonerPrompt = `
+        Review these Technical Facts and provide a "Deep Dive" analysis.
+        
+        TOPIC: ${topic}
+        FACTS:
+        ${phase1Result}
+
+        GOAL:
+        - Explain *WHY* these failures happen (Root Cause Analysis).
+        - Identify any logical gaps in the repair steps.
+        - Add expert "Pro Tips" that aren't obvious provided inputs.
+        - Create a "Theory of Operation" for the device/component.
+        
+        ${userNotes}
+        `;
+
+        const phase2Result = await smartGenerate('REASONER', reasonerPrompt, "You are a Principal Engineer and Logic Analyst.");
+        console.log("✅ [Phase 2] Reasoner complete.");
+
+        // -----------------------------------------------------------------------
+        // STEP 3: THE OUTLINER (Structural Skeleton)
+        // -----------------------------------------------------------------------
+        const outlinerPrompt = `
+        Create a perfect Blog Post Outline for: "${topic}".
+        
+        Reflect the "Deep Dive" insights in the structure.
+        
+        INSIGHTS:
+        ${phase2Result}
+
+        REQUIREMENTS:
+        - SEO-optimized H1 Title.
+        - Logical H2/H3 hierarchy.
+        - Section for "Diagnostics", "Tools Needed", and "Step-by-Step Repair".
+        - FAQ Section.
+        
+        Output *ONLY* the Markdown Outline.
+        `;
+
+        const phase3Result = await smartGenerate('OUTLINER', outlinerPrompt, "You are a Content Strategist.");
+        console.log("✅ [Phase 3] Outliner complete.");
+
+        // -----------------------------------------------------------------------
+        // STEP 4: THE WRITER (Final Content Generation)
+        // -----------------------------------------------------------------------
+        const writerPrompt = `
+        Write the FULL Final Blog Article.
+        
+        TOPIC: ${topic}
+        OUTLINE:
+        ${phase3Result}
+        
+        TECHNICAL DEEP DIVE (Incorporate these insights!):
+        ${phase2Result}
+        
+        RAW FACTS:
+        ${phase1Result}
+        
+        ${userNotes}
+
+        TONE: Professional, Authoritative, Technician-focused.
+        FORMAT: Markdown.
+        `;
+
+        const finalArticle = await smartGenerate('WRITER', writerPrompt, "You are an Expert Technical Writer.");
+        console.log("✅ [Phase 4] Writer complete.");
+
+        return NextResponse.json({ success: true, article: finalArticle, debug: { p1: phase1Result, p2: phase2Result, p3: phase3Result } });
 
     } catch (error: any) {
-        console.error('Article Generation Error:', error);
+        console.error('Deep Consensus Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to generate article' }, { status: 500 });
     }
 }

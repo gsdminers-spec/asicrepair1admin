@@ -51,38 +51,83 @@ export async function POST(req: Request) {
         // Limit total context for Gemini (e.g., top 15 mixed results)
         allResults = allResults.slice(0, 15);
 
-        // 3. GENERATE MASTER SUMMARY (GEMINI)
+        // 3. GENERATE MASTER SUMMARY (AI)
         let summary = "";
+        const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-        if (geminiKey && allResults.length > 0) {
-            try {
-                const { GoogleGenerativeAI } = require('@google/generative-ai');
-                const genAI = new GoogleGenerativeAI(geminiKey);
-                const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        // PREPARE CONTEXT
+        const contextText = allResults.map(r => `[${r.title}] ${r.content}`).join('\n\n');
 
-                const context = allResults.map(r => `[${r.title}] ${r.content}`).join('\n\n');
-                const prompt = `You are a research assistant. Synthesize the following search results about "${topic}" into a concise, high-level summary (3-4 sentences). Focus on technical accuracy.
+        if (allResults.length > 0) {
+            // OPTION A: OPENROUTER (Priority if Key Exists)
+            if (openRouterKey) {
+                try {
+                    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${openRouterKey}`,
+                            "HTTP-Referer": "https://asicrepair.in", // Optional: Report your usage
+                            "X-Title": "ASIC Admin",
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            "model": "google/gemini-2.0-flash-exp:free", // Free model as requested
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": "You are a research assistant. Synthesize the provided search results into a concise, high-level summary (3-4 sentences). Focus on technical accuracy."
+                                },
+                                {
+                                    "role": "user",
+                                    "content": `Search Results:\n${contextText}`
+                                }
+                            ]
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        summary = data.choices[0]?.message?.content || "";
+                    } else {
+                        console.error("OpenRouter Error:", await response.text());
+                    }
+                } catch (e) {
+                    console.error("OpenRouter Exception:", e);
+                }
+            }
+
+            // OPTION B: GEMINI DIRECT (Fallback if no OpenRouter or it failed)
+            if (!summary && geminiKey) {
+                try {
+                    const { GoogleGenerativeAI } = require('@google/generative-ai');
+                    const genAI = new GoogleGenerativeAI(geminiKey);
+                    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+
+                    const context = allResults.map(r => `[${r.title}] ${r.content}`).join('\n\n');
+                    const prompt = `You are a research assistant. Synthesize the following search results about "${topic}" into a concise, high-level summary (3-4 sentences). Focus on technical accuracy.
                 
                 ${context}`;
 
-                const result = await model.generateContent(prompt);
-                summary = result.response.text();
-            } catch (e) {
-                console.error("Gemini Summary Failed:", e);
-                summary = "AI Summary generation failed, but results were found.";
+                    const result = await model.generateContent(prompt);
+                    summary = result.response.text();
+                } catch (e) {
+                    console.error("Gemini Summary Failed:", e);
+                    summary = "AI Summary generation failed, but results were found.";
+                }
             }
+
+            // 4. FORMAT KEY FINDINGS
+            const keyFindings = allResults.map(r => `[${r.title}] ${r.content.substring(0, 150)}...`);
+
+            return NextResponse.json({
+                success: true,
+                results: allResults,
+                aiSummary: summary,
+                keyFindings: keyFindings,
+                sources: providerResults.map(p => p.provider) // Debug info
+            });
+
         }
-
-        // 4. FORMAT KEY FINDINGS
-        const keyFindings = allResults.map(r => `[${r.title}] ${r.content.substring(0, 150)}...`);
-
-        return NextResponse.json({
-            success: true,
-            results: allResults,
-            aiSummary: summary,
-            keyFindings: keyFindings,
-            sources: providerResults.map(p => p.provider) // Debug info
-        });
 
     } catch (error) {
         console.error('Search API Error:', error);
