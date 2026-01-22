@@ -54,7 +54,6 @@ export async function mimoResearch(query: string, context: string): Promise<Rese
                         "content": prompt
                     }
                 ],
-                "reasoning": { "enabled": true }
             })
         });
 
