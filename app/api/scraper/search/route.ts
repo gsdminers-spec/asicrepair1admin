@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { searchTavily, searchBrave, searchSerper, searchGemini } from '@/lib/researchProviders';
+import { searchTavily, searchBrave, searchSerper } from '@/lib/researchProviders';
 import { SearchResult } from '@/lib/types';
 import { smartGenerate } from '@/lib/ai/openrouter';
 
@@ -14,29 +14,42 @@ export async function POST(req: Request) {
         const tavilyKey = process.env.TAVILY_API_KEY;
         const braveKey = process.env.BRAVE_API_KEY;
         const serperKey = process.env.SERPER_API_KEY;
-        const geminiKey = process.env.GEMINI_API_KEY;
 
         if (!topic) {
             return NextResponse.json({ error: 'Topic is required' }, { status: 400 });
         }
 
-        // 1. EXECUTE PARALLEL SEARCHES
+        // 1. EXECUTE SMART DUAL-SEARCH ("The Sniper")
+        // We fire multiple targeted queries locally to different providers or same provider with different focus.
         const promises = [];
 
-        if (tavilyKey) promises.push(searchTavily(topic, tavilyKey));
-        if (braveKey) promises.push(searchBrave(topic, braveKey));
-        if (serperKey) promises.push(searchSerper(topic, serperKey));
-        // Use Gemini Grounding as a search provider if key exists
-        if (geminiKey) promises.push(searchGemini(topic, geminiKey));
-
-        if (promises.length === 0) {
-            return NextResponse.json({ error: 'No search providers configured' }, { status: 500 });
+        // QUERY A: General / Official Focus
+        if (tavilyKey) {
+            console.log(`🔎 [Research] Starting Primary Search for: ${topic}`);
+            promises.push(searchTavily(topic, tavilyKey));
         }
 
-        // Wait for all (fail resilient)
+        // QUERY B: Community / "Solved" Focus (Forces real human content)
+        if (tavilyKey) {
+            const communityQuery = `${topic} site:reddit.com OR site:bitcointalk.org OR site:stackoverflow.com "solved"`;
+            console.log(`🔎 [Research] Starting Community Search for: ${communityQuery}`);
+            promises.push(searchTavily(communityQuery, tavilyKey));
+        }
+
+        // Backup Providers (if Tavily missing)
+        if (!tavilyKey && braveKey) promises.push(searchBrave(topic, braveKey));
+        if (!tavilyKey && serperKey) promises.push(searchSerper(topic, serperKey));
+
+        // Note: REMOVED GEMINI SEARCH (Grounding) because it is disabled for this user account (Limit 0).
+
+        if (promises.length === 0) {
+            return NextResponse.json({ error: 'No search providers configured (Add TAVILY_API_KEY)' }, { status: 500 });
+        }
+
+        // Wait for all
         const providerResults = await Promise.all(promises);
 
-        // 2. AGGREGATE & DEDUPLICATE
+        // 2. AGGREGATE, DEDUPLICATE & RE-RANK
         let allResults: SearchResult[] = [];
         const seenUrls = new Set<string>();
         const errors: string[] = [];
@@ -49,38 +62,52 @@ export async function POST(req: Request) {
                 p.results.forEach(r => {
                     if (!seenUrls.has(r.url)) {
                         seenUrls.add(r.url);
-                        allResults.push({ ...r, source: p.provider });
+
+                        // RE-RANKING LOGIC: Boost "Official" and "Reddit"
+                        let weight = 1;
+                        if (r.url.includes('reddit.com')) weight = 2;
+                        if (r.url.includes('bitcointalk')) weight = 2;
+                        if (r.url.includes('manual') || r.url.includes('pdf')) weight = 1.5;
+
+                        // Fake score property for sorting if provider didn't give one
+                        const score = (r.score || 0.5) * weight;
+
+                        allResults.push({ ...r, source: p.provider, score });
                     }
                 });
             }
         });
 
-        // Limit total context for Gemini (e.g., top 15 mixed results)
+        // Sort by Boosted Score
+        allResults.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+        // Limit total context (e.g., top 15 mixed results)
         allResults = allResults.slice(0, 15);
 
-        // 3. GENERATE MASTER SUMMARY (Using Deep Consensus Client)
+        // 3. GENERATE MASTER SUMMARY (Gemini as Reader, not Searcher)
         let summary = "";
 
         if (allResults.length > 0) {
-            const contextText = allResults.map(r => `[${r.title}] ${r.content}`).join('\n\n');
+            const contextText = allResults.map(r => `[${r.title}] (${r.url})\n${r.content}`).join('\n\n');
             const summaryPrompt = `
-            Synthesize the following search results into a concise, high-level summary (3-4 sentences).
+            Synthesize the following search results into a detailed Technical Analysis (4-5 sentences).
             TOPIC: ${topic}
             
             SEARCH RESULTS:
             ${contextText}
             
-            Focus on technical accuracy and key facts.
+            Instructions:
+            1. Prioritize "Official" specs and "Community Solved" posts.
+            2. Ignore generic SEO spam.
+            3. Highlight specific error codes, voltage values, or part numbers if found.
             `;
 
-            // Use 'RESEARCHER' role as it's optimized for reading context (Gemini Flash)
             try {
-                // We use 'RESEARCHER' because it defaults to Gemini Flash Free (1M context) 
-                // which is perfect for reading search results.
-                summary = await smartGenerate('RESEARCHER', summaryPrompt, "You are a Research Assistant.");
+                // 'RESEARCHER' role = Gemini 2.0 Flash (Ideal for reading 15 results)
+                summary = await smartGenerate('RESEARCHER', summaryPrompt, "You are a Senior Technical Researcher.");
             } catch (e) {
                 console.error("SmartGenerate Summary Failed:", e);
-                summary = "Summary generation failed, but results were captured below.";
+                summary = "Summary generation failed, but raw results are available below.";
             }
 
             // 4. FORMAT KEY FINDINGS
@@ -91,11 +118,11 @@ export async function POST(req: Request) {
                 results: allResults,
                 aiSummary: summary,
                 keyFindings: keyFindings,
-                sources: providerResults.map(p => p.provider)
+                sources: ["Tavily (Twin-Engine)"] // Hardcoded for clarity since we merged
             });
 
         } else {
-            // NO RESULTS FOUND - RETURN DEBUG INFO
+            // NO RESULTS FOUND
             let debugMsg = "No search results found.";
             if (errors.length > 0) {
                 debugMsg += "\n\n⚠️ DEBUG ERRORS:\n" + errors.join('\n');
