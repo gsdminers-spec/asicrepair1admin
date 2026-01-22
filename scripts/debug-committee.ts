@@ -34,7 +34,7 @@ async function testVerifier() {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                "model": "deepseek/deepseek-r1:free",
+                "model": "tngtech/deepseek-r1t2-chimera:free",
                 "messages": [{ "role": "user", "content": "Say 'Chimera works'!" }]
             })
         });
