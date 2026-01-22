@@ -22,9 +22,14 @@ async function runSeoArchitect(topic: string, researchContext: string): Promise<
     console.log("🏗️ [Architect] Llama 3.3 starting...");
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+    // Groq Rate Limit Protection: Llama 3.3 has a strict 12k TPM limit.
+    // 20,000 chars is approx 5,000 tokens. + 2,000 output tokens = ~7,000 tokens. Safe.
+    const SAFE_GROQ_CONTEXT = 20000;
+    const truncatedContext = researchContext.substring(0, SAFE_GROQ_CONTEXT);
+
     const prompt = `
     TOPIC: ${topic}
-    RESEARCH: ${researchContext.substring(0, 15000)} (Truncated for safety)
+    RESEARCH: ${truncatedContext} (Truncated for Groq Rate Limits)
 
     You are the SEO ARCHITECT.
     Create a comprehensive BLOG OUTLINE.
