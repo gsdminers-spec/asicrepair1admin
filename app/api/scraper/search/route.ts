@@ -51,8 +51,8 @@ export async function POST(req: Request) {
         // Limit total context for Gemini (e.g., top 15 mixed results)
         allResults = allResults.slice(0, 15);
 
-        // 3. GENERATE MASTER SUMMARY (GEMINI 2.0)
-        let summary = "Summary unavailable.";
+        // 3. GENERATE MASTER SUMMARY (GEMINI)
+        let summary = "";
 
         if (geminiKey && allResults.length > 0) {
             try {

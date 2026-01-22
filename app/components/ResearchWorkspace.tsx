@@ -116,7 +116,7 @@ ${results.map((r, i) => `${i + 1}. ${r.title} - ${r.url}`).join('\n')}
             <div className="card">
                 <div className="flex justify-between items-center mb-2">
                     <label className="text-sm font-semibold text-slate-700">🔬 Research Topic</label>
-                    {isSaved && <span className="text-xs text-green-600 font-medium">✅ Saved to Database</span>}
+                    {isSaved && <span className="text-xs text-green-600 font-medium">✅ Saved to Session</span>}
                 </div>
 
                 <div className="flex gap-2">
