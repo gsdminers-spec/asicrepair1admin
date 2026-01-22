@@ -46,8 +46,8 @@ export async function mimoResearch(query: string, context: string): Promise<Rese
 
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
-        // Switching to 'gemini-1.5-flash-001' (Verified Working via Autonomous Scan)
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
+        // Switching back to 'gemini-2.0-flash-exp' as it is the ONLY one working in deep verification.
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
         const result = await model.generateContent(prompt);
         const text = result.response.text();
