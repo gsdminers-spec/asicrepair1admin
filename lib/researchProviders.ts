@@ -98,11 +98,16 @@ export async function searchSerper(query: string, apiKey: string): Promise<Provi
 // --- GEMINI GROUNDING ---
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+// --- GEMINI GROUNDING ---
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 export async function searchGemini(query: string, apiKey: string): Promise<ProviderResult> {
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
+        // Fallback to 1.5-flash as it is essentially stable for grounding now.
+        // 2.0-flash-exp can be flaky with tool outputs sometimes.
         const model = genAI.getGenerativeModel({
-            model: "gemini-2.0-flash-exp", // Verify if 2.0 is available, otherwise 1.5-flash
+            model: "gemini-1.5-flash",
             tools: [{ googleSearchRetrieval: {} }]
         });
 
@@ -116,14 +121,28 @@ export async function searchGemini(query: string, apiKey: string): Promise<Provi
 
         const result = await model.generateContent(prompt);
         const text = result.response.text();
+
+        // Robust JSON cleaning
         const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const data = JSON.parse(jsonStr);
+
+        let data;
+        try {
+            data = JSON.parse(jsonStr);
+        } catch (parseError) {
+            console.error("Gemini Search Parse Error. Raw text:", text);
+            // Fallback: try to find array in text logic if needed, but for now return error
+            throw new Error("Failed to parse Gemini Search JSON");
+        }
 
         const results: SearchResult[] = (data.results || []).map((r: any) => ({
             title: r.title,
             url: r.url,
             content: r.content,
         }));
+
+        if (results.length === 0) {
+            console.warn("Gemini returned 0 results. Raw response:", text);
+        }
 
         return { provider: 'gemini', results };
     } catch (e: any) {
