@@ -98,14 +98,11 @@ export async function searchSerper(query: string, apiKey: string): Promise<Provi
 // --- GEMINI GROUNDING ---
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// --- GEMINI GROUNDING ---
-
 export async function searchGemini(query: string, apiKey: string): Promise<ProviderResult> {
 
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
         // Fallback to 1.5-flash as it is essentially stable for grounding now.
-        // 2.0-flash-exp can be flaky with tool outputs sometimes.
         const model = genAI.getGenerativeModel({
             model: "gemini-1.5-flash",
             tools: [{ googleSearchRetrieval: {} }]
@@ -122,16 +119,29 @@ export async function searchGemini(query: string, apiKey: string): Promise<Provi
         const result = await model.generateContent(prompt);
         const text = result.response.text();
 
-        // Robust JSON cleaning
-        const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
         let data;
+        let jsonStr = "";
         try {
-            data = JSON.parse(jsonStr);
+            // Robust JSON extraction: look for { "results": ... }
+            const match = text.match(/\{[\s\S]*\}/);
+            if (match) {
+                jsonStr = match[0];
+                data = JSON.parse(jsonStr);
+            } else {
+                throw new Error("No JSON object found in response");
+            }
         } catch (parseError) {
             console.error("Gemini Search Parse Error. Raw text:", text);
-            // Fallback: try to find array in text logic if needed, but for now return error
-            throw new Error("Failed to parse Gemini Search JSON");
+            // FAILSAFE: If JSON fails, treat the whole response as one "source"
+            // This ensures we at least get the data the model found.
+            return {
+                provider: 'gemini',
+                results: [{
+                    title: "Gemini Research Summary (Fallback)",
+                    url: "https://google.com/search?q=" + encodeURIComponent(query),
+                    content: text // The raw text likely contains the search info anyway
+                }]
+            };
         }
 
         const results: SearchResult[] = (data.results || []).map((r: any) => ({
@@ -142,11 +152,20 @@ export async function searchGemini(query: string, apiKey: string): Promise<Provi
 
         if (results.length === 0) {
             console.warn("Gemini returned 0 results. Raw response:", text);
+            // Return raw text if array is empty
+            return {
+                provider: 'gemini',
+                results: [{
+                    title: "Gemini Research (Raw)",
+                    url: "#",
+                    content: text
+                }]
+            };
         }
 
         return { provider: 'gemini', results };
     } catch (e: any) {
         console.error('Gemini Search Failed:', e.message);
-        return { provider: 'gemini', results: [], error: e.message };
+        return { provider: 'gemini', results: [], error: `Gemini Error: ${e.message}` };
     }
 }
