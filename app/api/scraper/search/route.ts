@@ -23,27 +23,33 @@ export async function POST(req: Request) {
         // We fire multiple targeted queries locally to different providers or same provider with different focus.
         const promises = [];
 
-        // QUERY A: General / Official Focus
+        // QUERY A: General / Official Focus (Tavily)
         if (tavilyKey) {
-            console.log(`🔎 [Research] Starting Primary Search for: ${topic}`);
+            console.log(`🔎 [Research] Starting Primary Search (Tavily) for: ${topic}`);
             promises.push(searchTavily(topic, tavilyKey));
         }
 
-        // QUERY B: Community / "Solved" Focus (Forces real human content)
+        // QUERY B: Community Focus (Tavily)
         if (tavilyKey) {
             const communityQuery = `${topic} site:reddit.com OR site:bitcointalk.org OR site:stackoverflow.com "solved"`;
-            console.log(`🔎 [Research] Starting Community Search for: ${communityQuery}`);
+            console.log(`🔎 [Research] Starting Community Search (Tavily) for: ${communityQuery}`);
             promises.push(searchTavily(communityQuery, tavilyKey));
         }
 
-        // Backup Providers (if Tavily missing)
-        if (!tavilyKey && braveKey) promises.push(searchBrave(topic, braveKey));
-        if (!tavilyKey && serperKey) promises.push(searchSerper(topic, serperKey));
+        // QUERY C: Serper (Google Index) - General Focus
+        // If we have Serper, we use it to get raw Google results which are often fresher/different than Tavily.
+        if (serperKey) {
+            console.log(`🔎 [Research] Starting Google Search (Serper) for: ${topic}`);
+            promises.push(searchSerper(topic, serperKey));
+        }
+
+        // Backup Providers (if NO Tavily/Serper keys working)
+        if (!tavilyKey && !serperKey && braveKey) promises.push(searchBrave(topic, braveKey));
 
         // Note: REMOVED GEMINI SEARCH (Grounding) because it is disabled for this user account (Limit 0).
 
         if (promises.length === 0) {
-            return NextResponse.json({ error: 'No search providers configured (Add TAVILY_API_KEY)' }, { status: 500 });
+            return NextResponse.json({ error: 'No search providers configured (Add TAVILY_API_KEY or SERPER_API_KEY)' }, { status: 500 });
         }
 
         // Wait for all
@@ -53,8 +59,12 @@ export async function POST(req: Request) {
         let allResults: SearchResult[] = [];
         const seenUrls = new Set<string>();
         const errors: string[] = [];
+        const combinedSources: string[] = [];
 
         providerResults.forEach(p => {
+            if (p.provider && !combinedSources.includes(p.provider)) {
+                combinedSources.push(p.provider);
+            }
             if (p.error) {
                 errors.push(`${p.provider}: ${p.error}`);
             }
@@ -118,7 +128,7 @@ export async function POST(req: Request) {
                 results: allResults,
                 aiSummary: summary,
                 keyFindings: keyFindings,
-                sources: ["Tavily (Twin-Engine)"] // Hardcoded for clarity since we merged
+                sources: combinedSources
             });
 
         } else {
