@@ -15,16 +15,16 @@ export default function ClaudeOutput() {
     const [errorMessage, setErrorMessage] = useState('');
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
     // Auto-save logic
     useEffect(() => {
         const timer = setTimeout(() => {
             if (content && selectedTopicId && status !== 'saving' && status !== 'saved') {
-                // We don't auto-PUSH to DB to avoid spamming "done" status, 
-                // but we could save to localStorage as a draft.
                 localStorage.setItem(`draft-${selectedTopicId}`, content);
                 setLastSaved(new Date());
             }
-        }, 3000); // 3 seconds debouce
+        }, 3000);
 
         return () => clearTimeout(timer);
     }, [content, selectedTopicId, status]);
@@ -53,7 +53,7 @@ export default function ClaudeOutput() {
         setSelectedTopicId(topicId);
         const topic = topics.find(t => t.id === topicId);
         setSelectedTopicTitle(topic?.title || '');
-        setContent(''); // Clears current, effect will load draft if any
+        setContent('');
     };
 
     const handleSave = async () => {
@@ -65,14 +65,13 @@ export default function ClaudeOutput() {
 
         if (result.success) {
             setStatus('saved');
-            localStorage.removeItem(`draft-${selectedTopicId}`); // Clear draft
-            // Reset after delay
+            localStorage.removeItem(`draft-${selectedTopicId}`);
             setTimeout(() => {
                 setStatus('idle');
                 setContent('');
                 setSelectedTopicId('');
                 setSelectedTopicTitle('');
-                loadTopics(); // Refresh to remove saved topic
+                loadTopics();
             }, 2000);
         } else {
             setStatus('error');
@@ -134,9 +133,10 @@ export default function ClaudeOutput() {
                     {lastSaved && <span className="text-xs text-slate-400">Draft saved locally {lastSaved.toLocaleTimeString()}</span>}
                 </div>
                 <textarea
+                    ref={textareaRef}
                     className="form-textarea flex-1 font-mono text-sm leading-relaxed"
                     placeholder="# Article Title
-
+                    
 Content goes here..."
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
@@ -144,13 +144,11 @@ Content goes here..."
             </div>
 
             {/* Error Message */}
-            {
-                status === 'error' && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                        {errorMessage}
-                    </div>
-                )
-            }
+            {status === 'error' && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                    {errorMessage}
+                </div>
+            )}
 
             {/* Step 3: Action */}
             <div className="card sticky bottom-4 shadow-xl border-t-2 border-indigo-500">
@@ -175,20 +173,38 @@ Content goes here..."
                                         return;
                                     }
 
-                                    setStatus('saving'); // Re-use saving status for feedback
+                                    // Save cursor position since upload is async
+                                    const startPos = textareaRef.current?.selectionStart || content.length;
+                                    const endPos = textareaRef.current?.selectionEnd || startPos;
+
+                                    setStatus('saving');
                                     const { success, url, error } = await uploadImage(file);
                                     setStatus('idle');
 
                                     if (success && url) {
-                                        const markdownImage = `\n![${file.name}](${url})\n`;
-                                        setContent(prev => prev + markdownImage);
+                                        // Logical Insertion: Add newlines before and after to ensure block separation
+                                        const markdownImage = `\n\n![${file.name}](${url})\n\n`;
+
+                                        const newContent = content.substring(0, startPos) + markdownImage + content.substring(endPos);
+
+                                        setContent(newContent);
+
+                                        // Restore focus and cursor position
+                                        setTimeout(() => {
+                                            if (textareaRef.current) {
+                                                textareaRef.current.focus();
+                                                const newCursorPos = startPos + markdownImage.length;
+                                                textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+                                            }
+                                        }, 0);
+
                                     } else {
                                         alert(`Upload Failed: ${error}`);
                                     }
                                 }}
                             />
                             <button className="btn btn-secondary flex items-center gap-2">
-                                <span>📷</span> Add Photo
+                                <span>📷</span> Add Photos
                             </button>
                         </div>
 
