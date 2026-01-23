@@ -24,25 +24,55 @@ export async function POST(req: Request) {
                 searchSerper(topic, process.env.SERPER_API_KEY!)
             ]);
 
-            // 2. Synthesize Context
-            let rawData = "";
-            tavilyGeneral.results.forEach(r => rawData += `[Source: ${r.title}](${r.url})\n${r.content}\n\n`);
-            tavilyCommunity.results.forEach(r => rawData += `[Community: ${r.title}](${r.url})\n${r.content}\n\n`);
-            serperGoogle.results.forEach(r => rawData += `[Google: ${r.title}](${r.url})\n${r.content}\n\n`);
+            // 2. Synthesize & Filter Context (The "Smart Feed")
+            const allResults = [
+                ...tavilyGeneral.results,
+                ...tavilyCommunity.results,
+                ...serperGoogle.results
+            ];
 
-            // 3. Mimo Analysis
-            // 3. Mimo Analysis (DISABLED - QUOTA EXHAUSTED)
-            // const researcher = await mimoResearch(topic, rawData);
+            // A. Quality Filter
+            const qualityResults = allResults.filter(r => {
+                const content = r.content || "";
+                // 1. Length Check (Skip thin content)
+                if (content.length < 150) return false;
+                // 2. Duplicate Check (Basic URL check - could be improved)
+                return true;
+            }).map(r => {
+                // B. Scoring/Boost (Simple Heuristic)
+                let qualityScore = 1;
+                const lowerUrl = r.url.toLowerCase();
+                if (lowerUrl.includes('reddit.com')) qualityScore += 2; // High signal for repairs
+                if (lowerUrl.includes('bitcointalk.org')) qualityScore += 3; // Gold mine for ASIC
+                if (lowerUrl.includes('stackoverflow.com')) qualityScore += 2;
+                if (lowerUrl.includes('zeusbtc')) qualityScore += 2; // Competitor/Source data
 
-            console.log("⚠️ Research Agent Bypass: Quota Limit Reached. Returning Raw Data.");
+                return { ...r, qualityScore };
+            }).sort((a, b) => b.qualityScore - a.qualityScore); // Sort by Quality
+
+            // C. Format to Markdown (The "Feed")
+            let rawData = "## 🧠 HIGH-QUALITY RESEARCH DATA (Structured Feed)\n\n";
+
+            // Limit to top 15 sources to avoid context overflow, even with 17B model
+            qualityResults.slice(0, 15).forEach((r, index) => {
+                rawData += `### [${index + 1}] ${r.title}\n`;
+                rawData += `**Source**: ${r.url}\n`;
+                rawData += `**relevance**: ${r.qualityScore > 1 ? '🔥 High Signal' : 'Standard'}\n`;
+                rawData += `> ${r.content.replace(/\n/g, ' ')}\n\n`;
+            });
+
+            console.log(`✅ Smart Feed Generated: ${qualityResults.length} filtered sources.`);
+
+            // 3. Mimo Analysis Bypass (Quota Pivot)
+            console.log("⚠️ Research Agent Bypass: Proceeding with Smart Feed (Raw Data Strategy).");
 
             return NextResponse.json({
                 success: true,
                 data: {
-                    rawSources: [...tavilyGeneral.results, ...tavilyCommunity.results, ...serperGoogle.results],
-                    // Placeholder for the frontend
-                    factSheet: "## 🛑 AI Analysis Paused (Quota Exceeded)\n\nWe have successfully gathered **" + (tavilyGeneral.results.length + tavilyCommunity.results.length + serperGoogle.results.length) + "** sources from Tavily and Google.\n\nDue to high demand, the AI summarizer is currently paused. \n\n**Next Steps:**\n1. Review the Raw Sources on the left.\n2. Proceed to Draft (The Writer will attempt to read the top sources directly).",
-                    reasoning: "Analysis bypassed."
+                    rawSources: allResults, // Keep full list for UI
+                    // The "Fact Sheet" is now the structured raw feed
+                    factSheet: rawData,
+                    reasoning: "AI Summary Bypassed. Using Structured Raw Feed (Quality Filtered) for maximum detail."
                 }
             });
         }

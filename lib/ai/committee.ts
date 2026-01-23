@@ -111,11 +111,23 @@ async function runFinalWriter(topic: string, outline: string, researchContext: s
     ${researchContext.substring(0, MAX_CONTEXT_CHARS)}
     
     TASK:
-    Write the Full Blog Post.
-    - Follow the Outline.
-    - Respect Verification Notes.
-    - Use Markdown.
-    - Tone: Professional, authoritative.
+    Write a High-Quality, Human-Like Blog Post (400 - 2000 words).
+    
+    STYLE & GOALS:
+    1. **REPAIR CENTRIC**: You are an Expert ASIC Technician. Use correct industry jargon (e.g., "logs", "hashboards", "soldering", "diagnostics"). Be authoritative.
+    2. **SEO FRIENDLY**: Naturally integrate keywords. Do not keyword stuff. Structure with clear H2/H3 for readability.
+    3. **HUMANIZED & SALES DRIVEN**: 
+       - ❌ Avoid AI fluff ("In the realm of...", "Unlock the potential...").
+       - ✅ Write like a human speaking to a customer.
+       - ✅ **GOAL**: Attract customers to our repair services/courses. solve their problem, then offer our help.
+    4. **LENGTH**: 400 - 2000 words (including space for human edits).
+    
+    STRUCTURE:
+    - **Hook**: Grab attention immediately (Repair problem/solution).
+    - **Body**: Technical steps, diagrams (described), or analysis.
+    - **Conclusion**: Summary + **Strong Call to Action** (Visit ASICREPAIR.IN).
+    
+    Synthesize the research. If research is thin, rely on your "Technician Persona" to fill gaps logically.
     `;
 
     try {
