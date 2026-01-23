@@ -1,13 +1,15 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Groq } from "groq-sdk";
 
 /**
- * DEEP CONSENSUS ENGINE
+ * DEEP CONSENSUS ENGINE (v3 - Groq Enhanced)
  * 
  * This client manages the "Council of Agents" for robust article generation.
- * It implements a 3-tier safety net:
- * 1. Primary OpenRouter Model (e.g., GPT-OSS-120B)
- * 2. Alternate OpenRouter Model (e.g., DeepSeek R1)
- * 3. The "Gemini Floor" (Direct Google API)
+ * It implements a 4-tier safety net:
+ * 1. Primary OpenRouter Model (e.g., DeepSeek R1)
+ * 2. The "Groq Bridge" (Llama 3.3 70B - Fast & Reliable)
+ * 3. Alternate OpenRouter Model
+ * 4. The "Gemini Floor" (Direct Google API - Last Resort)
  */
 
 // ---------------------------------------------------------------------------
@@ -22,24 +24,21 @@ interface ModelPair {
 }
 
 // Map Roles to Specific Free Models
-// Map Roles to Verified Free Models (Audited)
 const AGENT_ROSTER: Record<AgentRole, ModelPair> = {
     RESEARCHER: {
-        primary: "google/gemini-2.0-flash-exp:free", // Verified Working (1M Context)
-        alternate: "google/gemini-2.0-pro-exp-02-05:free" // Good backup
+        primary: "google/gemini-2.0-flash-exp:free",
+        alternate: "google/gemini-2.0-pro-exp-02-05:free"
     },
     REASONER: {
-        // GPT-OSS might be flaky, switching to DeepSeek R1 as Primary (Strongest Free Reasoner)
         primary: "deepseek/deepseek-r1:free",
-        alternate: "nvidia/llama-3.1-nemotron-70b-instruct:free" // Very strong alternative
+        alternate: "nvidia/llama-3.1-nemotron-70b-instruct:free"
     },
     OUTLINER: {
-        // Upgrading to Llama 3.1 8B (Better instruction following)
         primary: "meta-llama/llama-3.1-8b-instruct:free",
         alternate: "mistralai/mistral-7b-instruct:free"
     },
     WRITER: {
-        primary: "google/gemini-2.0-flash-exp:free", // Large context for long articles
+        primary: "google/gemini-2.0-flash-exp:free",
         alternate: "google/gemini-2.0-pro-exp-02-05:free"
     }
 };
@@ -48,28 +47,54 @@ const AGENT_ROSTER: Record<AgentRole, ModelPair> = {
 // 2. THE GEMINI FLOOR (Ultimate Safety Net)
 // ---------------------------------------------------------------------------
 
-/**
- * Failsafe: Uses the direct Google Gemini API if OpenRouter is completely down.
- */
 async function callGeminiDirect(prompt: string, systemInstruction?: string): Promise<string> {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("CRITICAL: No GEMINI_API_KEY found for emergency fallback.");
 
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" }); // Fast, reliable floor (Updated to V2)
+        // Using 'gemini-1.5-flash-8b' as it is often separate quota from the main 2.0/1.5 models
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" });
 
         const fullPrompt = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
         const result = await model.generateContent(fullPrompt);
         return result.response.text();
     } catch (error) {
         console.error("❌ GEMINI FLOOR FAILED:", error);
-        throw new Error("TOTAL SYSTEM FAILURE: Both OpenRouter and Gemini Direct failed.");
+        throw new Error("TOTAL SYSTEM FAILURE: OpenRouter, Groq, and Gemini all failed.");
     }
 }
 
 // ---------------------------------------------------------------------------
-// 3. OPENROUTER CLIENT (With Circuit Breakers)
+// 3. THE GROQ BRIDGE (Reliable Layer)
+// ---------------------------------------------------------------------------
+
+async function callGroqDirect(prompt: string, systemInstruction?: string): Promise<string> {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new Error("No GROQ_API_KEY configured.");
+
+    try {
+        const groq = new Groq({ apiKey });
+        const messages: any[] = [];
+        if (systemInstruction) messages.push({ role: "system", content: systemInstruction });
+        messages.push({ role: "user", content: prompt });
+
+        const completion = await groq.chat.completions.create({
+            messages: messages,
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_completion_tokens: 4096
+        });
+
+        return completion.choices[0]?.message?.content || "";
+    } catch (error: any) {
+        console.warn("⚠️ Groq Bridge Failed:", error.message);
+        throw error;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 4. OPENROUTER CLIENT (With Circuit Breakers)
 // ---------------------------------------------------------------------------
 
 async function sleep(ms: number) {
@@ -101,10 +126,7 @@ async function callOpenRouterRaw(modelId: string, prompt: string, systemInstruct
     });
 
     if (!response.ok) {
-        // Handle Rate Limits specifically
-        if (response.status === 429) {
-            throw new Error(`RATE_LIMIT`);
-        }
+        if (response.status === 429) throw new Error(`RATE_LIMIT`);
         const errorText = await response.text();
         throw new Error(`OpenRouter Error (${response.status}): ${errorText}`);
     }
@@ -114,44 +136,47 @@ async function callOpenRouterRaw(modelId: string, prompt: string, systemInstruct
 }
 
 // ---------------------------------------------------------------------------
-// 4. MAIN ORCHESTRATOR
+// 5. MAIN ORCHESTRATOR
 // ---------------------------------------------------------------------------
 
-/**
- * Smart Generate: Tries Primary -> Alternate -> Gemini Floor
- */
 export async function smartGenerate(
     role: AgentRole,
     prompt: string,
     systemInstruction?: string
 ): Promise<string> {
     const models = AGENT_ROSTER[role];
-    console.log(`🤖 [${role}] Activating. Primary: ${models.primary} | Alternate: ${models.alternate}`);
+    console.log(`🤖 [${role}] Activating. Trying Chain: OpenRouter -> Groq -> Gemini.`);
 
-    // ATTEMPT 1: Primary Model
+    // ATTEMPT 1: Primary Model (OpenRouter)
     try {
         return await callOpenRouterRaw(models.primary, prompt, systemInstruction);
     } catch (error: any) {
-        console.warn(`⚠️ [${role}] Primary (${models.primary}) failed: ${error.message}. Switching to Alternate...`);
-
-        // Brief pause if it was a rate limit to let buffers clear
+        console.warn(`⚠️ [${role}] Primary (${models.primary}) failed. Switching to Groq...`);
         if (error.message.includes('RATE_LIMIT')) await sleep(1000);
     }
 
-    // ATTEMPT 2: Alternate Model
+    // ATTEMPT 2: The Groq Bridge (Llama 3.3)
+    try {
+        const groqResult = await callGroqDirect(prompt, systemInstruction);
+        console.log(`✅ [${role}] Saved by Groq Bridge.`);
+        return groqResult;
+    } catch (error: any) {
+        console.warn(`⚠️ [${role}] Groq Bridge failed. Switching to Alternate OpenRouter...`);
+    }
+
+    // ATTEMPT 3: Alternate Model (OpenRouter)
     try {
         return await callOpenRouterRaw(models.alternate, prompt, systemInstruction);
     } catch (error: any) {
-        console.error(`🚨 [${role}] Alternate (${models.alternate}) failed: ${error.message}. ACTIVATING GEMINI FLOOR.`);
+        console.error(`🚨 [${role}] Alternate (${models.alternate}) failed. ACTIVATING GEMINI FLOOR.`);
     }
 
-    // ATTEMPT 3: Gemini Floor (Direct API)
+    // ATTEMPT 4: Gemini Floor (Direct API)
     try {
         const floorResult = await callGeminiDirect(prompt, systemInstruction);
         console.log(`✅ [${role}] Saved by Gemini Floor.`);
         return floorResult;
     } catch (fatalError: any) {
-        // If we get here, everything is broken.
         return `SYSTEM_ERROR: Unable to generate content. Details: ${fatalError.message}`;
     }
 }
