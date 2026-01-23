@@ -85,37 +85,64 @@ async function runFactVerifier(outline: string, researchContext: string): Promis
     }
 }
 
-// --- 3. FINAL WRITER (MULTI-MODEL BACKUP) ---
+// --- 3. FINAL WRITER (GROQ MIGRATION) ---
 async function runFinalWriter(topic: string, outline: string, researchContext: string, verification: string): Promise<string> {
-    console.log("✍️ [Writer] Starting...");
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
-    const genAI = new GoogleGenerativeAI(apiKey);
+    console.log("✍️ [Writer] Groq Llama 3.3 starting...");
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new Error("Missing GROQ_API_KEY");
+
+    const groq = new Groq({ apiKey });
+
+    // STRICT RATE LIMIT PROTECTION
+    // Groq Limit: 12,000 Tokens/Minute.
+    // Goal: Use max ~6,000 Input Tokens to allow ~4,000 Output Tokens.
+    // 1 Token ~= 4 Chars. -> 6,000 Tokens ~= 24,000 Chars.
+    // Safety Buffer: Limit Context to 15,000 Chars (~3,750 Tokens).
+    const MAX_CONTEXT_CHARS = 15000;
 
     const finalPrompt = `
+    You are the FINAL WRITER.
+    
     TOPIC: ${topic}
     OUTLINE: ${outline}
-    VERIFICATION: ${verification}
-    RESEARCH: ${researchContext.substring(0, 50000)}
-    TASK: Write the Full Blog Post (Markdown). Professional Tone.
+    VERIFICATION NOTES: ${verification}
+    
+    RESEARCH DATA (Truncated for Rate Limits):
+    ${researchContext.substring(0, MAX_CONTEXT_CHARS)}
+    
+    TASK:
+    Write the Full Blog Post.
+    - Follow the Outline.
+    - Respect Verification Notes.
+    - Use Markdown.
+    - Tone: Professional, authoritative.
     `;
 
-    // Strategy: Try Primary -> Try Backup -> Fail Gracefully
-    const models = ["gemini-2.0-flash-exp", "gemini-1.5-flash-8b"];
+    try {
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: finalPrompt }],
+            model: "llama-3.3-70b-versatile",
+            temperature: 0.7,
+            max_completion_tokens: 4096, // Allow long articles
+        });
 
-    for (const modelId of models) {
+        return chatCompletion.choices[0]?.message?.content || "Failed to generate article content.";
+    } catch (e: any) {
+        console.error("Writer (Groq) Failed:", e);
+        // Fallback: If 70b fails (limit?), try 8b (faster/cheaper)
         try {
-            console.log(`Trying Writer Model: ${modelId}`);
-            const model = genAI.getGenerativeModel({ model: modelId });
-            const result = await model.generateContent(finalPrompt);
-            const text = result.response.text();
-            if (text) return text;
-        } catch (e: any) {
-            console.warn(`Writer Model ${modelId} Failed:`, e.message);
+            console.log("⚠️ Switching to Llama 3.1 8b Fallback...");
+            const fallbackCompletion = await groq.chat.completions.create({
+                messages: [{ role: "user", content: finalPrompt }],
+                model: "llama-3.1-8b-instant",
+                temperature: 0.7,
+                max_completion_tokens: 4096,
+            });
+            return fallbackCompletion.choices[0]?.message?.content || "Failed to generate fallback article.";
+        } catch (fallbackErr) {
+            throw new Error(`Groq Writer Failed (Primary & Fallback): ${e.message}`);
         }
     }
-
-    throw new Error("All Writer Models Failed (Quota Exceeded).");
 }
 
 // --- ORCHESTRATOR ---
