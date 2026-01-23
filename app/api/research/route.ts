@@ -31,22 +31,18 @@ export async function POST(req: Request) {
             serperGoogle.results.forEach(r => rawData += `[Google: ${r.title}](${r.url})\n${r.content}\n\n`);
 
             // 3. Mimo Analysis
-            const researcher = await mimoResearch(topic, rawData);
+            // 3. Mimo Analysis (DISABLED - QUOTA EXHAUSTED)
+            // const researcher = await mimoResearch(topic, rawData);
 
-            if (researcher.error || !researcher.content) {
-                console.error("Researcher Agent Error:", researcher.error);
-                return NextResponse.json({
-                    success: false,
-                    error: researcher.error || "Researcher returned empty content."
-                });
-            }
+            console.log("⚠️ Research Agent Bypass: Quota Limit Reached. Returning Raw Data.");
 
             return NextResponse.json({
                 success: true,
                 data: {
                     rawSources: [...tavilyGeneral.results, ...tavilyCommunity.results, ...serperGoogle.results],
-                    factSheet: researcher.content,
-                    reasoning: researcher.reasoning
+                    // Placeholder for the frontend
+                    factSheet: "## 🛑 AI Analysis Paused (Quota Exceeded)\n\nWe have successfully gathered **" + (tavilyGeneral.results.length + tavilyCommunity.results.length + serperGoogle.results.length) + "** sources from Tavily and Google.\n\nDue to high demand, the AI summarizer is currently paused. \n\n**Next Steps:**\n1. Review the Raw Sources on the left.\n2. Proceed to Draft (The Writer will attempt to read the top sources directly).",
+                    reasoning: "Analysis bypassed."
                 }
             });
         }
