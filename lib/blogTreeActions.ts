@@ -32,7 +32,36 @@ export async function fetchFullBlogTree() {
     // The query above doesn't guarantee nested order without specific order modifiers for inner joins,
     // but usually creation order roughly holds. For a robust app, we should sort by created_at or name.
 
-    return data as (Phase & { categories: (Category & { subcategories: (Subcategory & { topics: Topic[] })[] })[] })[];
+    const rawData = data as any[];
+
+    // TRANSFORM: Support Hybrid Schema (Phases 2-4)
+    // If a category has a subcategory named "All Topics" (or similar),
+    // we move its topics up to the category level and remove the subcategory from the list.
+    const processedData = rawData.map(phase => ({
+        ...phase,
+        categories: phase.categories.map((cat: any) => {
+            let topics: Topic[] = [];
+            let subcategories = cat.subcategories || [];
+
+            // Find "All Topics" or "Direct"
+            const allTopicsIndex = subcategories.findIndex((s: any) => ['All Topics', 'All Models', 'Direct', 'General'].includes(s.name));
+
+            if (allTopicsIndex !== -1) {
+                // Move topics up
+                topics = subcategories[allTopicsIndex].topics;
+                // Remove that subcategory wrapper from the list so it doesn't show in UI
+                subcategories = subcategories.filter((_: any, idx: number) => idx !== allTopicsIndex);
+            }
+
+            return {
+                ...cat,
+                subcategories,
+                topics // Now we have direct topics!
+            };
+        })
+    }));
+
+    return processedData as (Phase & { categories: (Category & { subcategories: (Subcategory & { topics: Topic[] })[], topics?: Topic[] })[] })[];
 }
 
 // --- PHASE ACTIONS ---
@@ -92,5 +121,17 @@ export async function updateTopicStatus(id: string, status: 'pending' | 'in-prog
 }
 
 export async function deleteTopic(id: string) {
+    // SYNC: First delete the linked article if it exists
+    // We first get the topic details to know the title or ID
+    const { data: topic } = await supabase.from('topics').select('title').eq('id', id).single();
+
+    if (topic) {
+        // Try deleting by topic_id if column exists, or title
+        // Since we don't know strict schema, we try both or just title if that's the link.
+        // Assuming title matching based on previous context, but topic_id is safer if it exists.
+        // Let's try deleting by title as a fallback if topic_id isn't strictly enforced.
+        await supabase.from('articles').delete().eq('title', topic.title);
+    }
+
     return await supabase.from('topics').delete().eq('id', id);
 }

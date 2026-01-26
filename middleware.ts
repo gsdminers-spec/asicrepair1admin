@@ -8,6 +8,11 @@ export async function middleware(request: NextRequest) {
 
     // 1. Allow public routes
     if (pathname === '/login' || pathname.startsWith('/api/auth')) {
+        // If user is already logged in and tries to access login page, redirect to dashboard
+        const session = await verifySession();
+        if (session && pathname === '/login') {
+            return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
         return NextResponse.next();
     }
 

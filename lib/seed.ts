@@ -43,7 +43,7 @@ export async function seedDatabase() {
             if (catError) { console.error('Cat Error:', catError); continue; }
             catCount++;
 
-            for (const sub of cat.subcategories) {
+            for (const sub of cat.subcategories || []) {
                 // 3. Insert Subcategory
                 const { data: subData, error: subError } = await supabase
                     .from('subcategories')

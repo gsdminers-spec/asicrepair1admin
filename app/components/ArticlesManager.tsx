@@ -410,7 +410,6 @@ export default function ArticlesManager({ onNavigateToPublish }: { onNavigateToP
                                 ✕
                             </button>
                         </div>
-
                         <div className="p-6 flex-1 overflow-y-auto">
                             <div className="mb-4">
                                 <label className="block text-sm font-semibold text-slate-700 mb-2">Title</label>

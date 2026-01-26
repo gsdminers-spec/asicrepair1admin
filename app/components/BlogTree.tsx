@@ -19,7 +19,7 @@ type View = 'phases' | 'categories' | 'subcategories' | 'topics';
 
 // Extended TYPES to support nested structure in UI
 type UIPhase = Phase & { categories: UICategory[] };
-type UICategory = Category & { subcategories: UISubcategory[] };
+type UICategory = Category & { subcategories?: UISubcategory[], topics?: Topic[] };
 type UISubcategory = Subcategory & { topics: Topic[] };
 
 export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
@@ -61,7 +61,7 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                     if (c) {
                         setSelectedCategory(c);
                         if (selectedSubcategory) {
-                            const s = c.subcategories.find(s => s.id === selectedSubcategory.id);
+                            const s = c.subcategories?.find(s => s.id === selectedSubcategory.id);
                             if (s) setSelectedSubcategory(s);
                         }
                     }
@@ -203,9 +203,13 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                     {data.map(phase => {
                         const stats = {
                             cat: phase.categories.length,
-                            sub: phase.categories.reduce((acc, c) => acc + c.subcategories.length, 0),
-                            // Flatten topics
-                            topics: phase.categories.flatMap(c => c.subcategories.flatMap(s => s.topics)).length
+                            sub: phase.categories.reduce((acc, c) => acc + (c.subcategories?.length || 0), 0),
+                            // Flatten topics from subcategories AND direct topics
+                            topics: phase.categories.flatMap(c => {
+                                const subTopics = c.subcategories?.flatMap(s => s.topics) || [];
+                                const directTopics = c.topics || [];
+                                return [...subTopics, ...directTopics];
+                            }).length
                         }
                         return (
                             <div
@@ -247,18 +251,46 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
 
                 <div className="flex flex-col gap-4">
                     {selectedPhase.categories.map(cat => {
-                        const articleCount = cat.subcategories.reduce((sum, sub) => sum + sub.topics.length, 0);
+                        const subTopicsCount = cat.subcategories?.reduce((sum, sub) => sum + sub.topics.length, 0) || 0;
+                        const directTopicsCount = cat.topics?.length || 0;
+                        const articleCount = subTopicsCount + directTopicsCount;
+
+                        // Hybrid Logic: If no subcategories but has topics, go straight to topics view
+                        // We do this by "faking" a subcategory selection or using a new view mode
+                        // Actually, easiest is to treat the Category AS a Subcategory context for the Topics View
+                        const handleClick = () => {
+                            if (cat.topics && cat.topics.length > 0) {
+                                // Create a dummy subcategory wrapper to reuse the Topics View
+                                const dummySub: any = {
+                                    id: cat.id, // Reuse Category ID
+                                    name: cat.name, // Reuse Category Name
+                                    topics: cat.topics
+                                };
+                                goToTopics(dummySub);
+                            } else if (cat.subcategories && cat.subcategories.length > 0) {
+                                goToSubcategories(cat);
+                            } else {
+                                // Empty? Default to subcategories view so they can add one, 
+                                // OR ideally allow adding topics directly to category (not implemented yet).
+                                // Hybrid solution: Go to subcategories for now.
+                                goToSubcategories(cat);
+                            }
+                        };
+
                         return (
                             <div
                                 key={cat.id}
                                 className="card hover:shadow-md cursor-pointer transition-all flex justify-between items-center"
-                                onClick={() => goToSubcategories(cat)}
+                                onClick={handleClick}
                             >
                                 <div className="flex items-center gap-3">
                                     <span className="text-2xl">⚡</span>
                                     <div>
                                         <h4 className="font-bold text-slate-800">{cat.name}</h4>
-                                        <span className="text-xs text-slate-500">{articleCount} articles • {cat.subcategories.length} sub-categories</span>
+                                        <span className="text-xs text-slate-500">
+                                            {articleCount} articles
+                                            {cat.subcategories && cat.subcategories.length > 0 ? ` • ${cat.subcategories.length} sub-categories` : ''}
+                                        </span>
                                     </div>
                                 </div>
                                 <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
@@ -284,7 +316,7 @@ export default function BlogTree({ onSelectTopic }: BlogTreeProps) {
                 </div>
 
                 <div className="flex flex-col gap-3">
-                    {selectedCategory.subcategories.map(sub => (
+                    {(selectedCategory.subcategories || []).map(sub => (
                         <div
                             key={sub.id}
                             className="card hover:shadow-md cursor-pointer transition-all flex justify-between items-center py-3"
