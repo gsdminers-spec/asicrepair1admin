@@ -394,7 +394,7 @@ export default function ArticlesManager({ onNavigateToPublish }: { onNavigateToP
                                 className="btn btn-secondary w-full text-green-700 border-green-200 hover:bg-green-50"
                                 onClick={handlePublishNowFromModal}
                             >
-                                🚀 Publish Now Instead
+                                🚀 Publish Live to Hostinger
                             </button>
                         </div>
                     </div>

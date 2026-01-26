@@ -58,7 +58,7 @@ export default function PublishHub() {
     };
 
     const handlePublishNow = async (item: QueueItem) => {
-        if (confirm('Publish this article immediately?')) {
+        if (confirm('Publish this article immediately and trigger deployment?')) {
             const result = await publishNow(item.id, item.article_id);
             if (result.success) {
                 alert('Article published successfully!');
@@ -156,7 +156,7 @@ export default function PublishHub() {
                                         className="btn btn-primary text-xs w-full shadow-emerald-200 shadow-sm"
                                         onClick={() => handlePublishNow(item)}
                                     >
-                                        🚀 Publish Now
+                                        🚀 Publish Live to Hostinger
                                     </button>
                                 </div>
                             )}
