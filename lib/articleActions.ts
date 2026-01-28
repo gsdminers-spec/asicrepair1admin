@@ -38,7 +38,7 @@ export async function fetchPendingTopics(): Promise<Topic[]> {
 }
 
 // Save article from Claude Output and update topic status
-export async function saveArticle(topicId: string, title: string, content: string, category?: string): Promise<{ success: boolean; articleId?: string; error?: string }> {
+export async function saveArticle(topicId: string, title: string, content: string, category?: string, status: 'draft' | 'ready' = 'ready'): Promise<{ success: boolean; articleId?: string; error?: string }> {
     // 1. Insert article
     const { data: articleData, error: articleError } = await supabase
         .from('articles')
@@ -47,7 +47,7 @@ export async function saveArticle(topicId: string, title: string, content: strin
             title,
             content,
             category,
-            status: 'ready'
+            status // Use passed status
         })
         .select()
         .single();
@@ -92,7 +92,8 @@ export async function fetchArticles(): Promise<Article[]> {
 export async function moveToPublish(
     articleId: string,
     scheduledDate?: string,
-    scheduledTime?: string
+    scheduledTime?: string,
+    category?: string
 ): Promise<{ success: boolean; error?: string; queueId?: string }> {
     // Check if already in queue
     const { data: existing } = await supabase
@@ -134,8 +135,13 @@ export async function moveToPublish(
         return { success: false, error: error.message };
     }
 
-    // Update article status
-    await supabase.from('articles').update({ status: 'scheduled' }).eq('id', articleId);
+    // Update article status AND category
+    const updateData: any = { status: 'scheduled' };
+    if (category) {
+        updateData.category = category;
+    }
+
+    await supabase.from('articles').update(updateData).eq('id', articleId);
 
     // Log activity
     await import('./logger').then(l => l.logActivity('UPDATE', 'Article', `Scheduled article for publishing: ${articleId}`));

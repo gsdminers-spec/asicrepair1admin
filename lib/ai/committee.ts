@@ -1,13 +1,13 @@
-import { Groq } from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { AGENT_ROLES, AI_CONFIG } from './modelConfig';
 
 /**
- * THE WRITER COMMITTEE
+ * THE WRITER COMMITTEE (Gemini 2.5 Powered)
  * 
  * Orchestrates the 3-Step Writing Process:
- * 1. SEO ARCHITECT (Llama 3.3 via Groq)
- * 2. FACT VERIFIER (Chimera R1 via OpenRouter)
- * 3. FINAL WRITER (Gemini 2.5 Flash via Google)
+ * 1. SEO ARCHITECT (Gemini 2.5 Flash) - Huge Context Window
+ * 2. FACT VERIFIER (DeepSeek R1 via OpenRouter) - Logic Check
+ * 3. FINAL WRITER (Gemini 2.5 Flash) - High Quality Output
  */
 
 interface CommitteeOutput {
@@ -17,19 +17,21 @@ interface CommitteeOutput {
     error?: string;
 }
 
-// --- 1. SEO ARCHITECT ---
+// --- 1. SEO ARCHITECT (GEMINI 2.5) ---
 async function runSeoArchitect(topic: string, researchContext: string): Promise<string> {
-    console.log("🏗️ [Architect] Llama 3.3 starting...");
-    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    console.log(`🏗️ [Architect] ${AGENT_ROLES.ARCHITECT} starting...`);
 
-    // Groq Rate Limit Protection: Llama 3.3 has a strict 12k TPM limit.
-    // 20,000 chars is approx 5,000 tokens. + 2,000 output tokens = ~7,000 tokens. Safe.
-    const SAFE_GROQ_CONTEXT = 20000;
-    const truncatedContext = researchContext.substring(0, SAFE_GROQ_CONTEXT);
+    const apiKey = process.env[AI_CONFIG.GEMINI.API_KEY_ENV];
+    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+
+    // Safety Truncation: Gemini 2.5 has 1M context, so we can be generous.
+    // 500,000 chars is safe and huge.
+    const SAFE_CONTEXT_LIMIT = 500000;
+    const safeContext = researchContext.substring(0, SAFE_CONTEXT_LIMIT);
 
     const prompt = `
     TOPIC: ${topic}
-    RESEARCH: ${truncatedContext} (Truncated for Groq Rate Limits)
+    RESEARCH: ${safeContext}
 
     You are the SEO ARCHITECT.
     Create a comprehensive BLOG OUTLINE.
@@ -42,63 +44,71 @@ async function runSeoArchitect(topic: string, researchContext: string): Promise<
     Return ONLY Markdown.
     `;
 
-    const chatCompletion = await groq.chat.completions.create({
-        messages: [{ role: "user", content: prompt }],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.7,
-        max_completion_tokens: 2048,
-    });
-
-    return chatCompletion.choices[0]?.message?.content || "";
-}
-
-// --- 2. FACT VERIFIER (RESILIENT) ---
-async function runFactVerifier(outline: string, researchContext: string): Promise<string> {
-    console.log("🕵️ [Verifier] Chimera R1 starting...");
-    const apiKey = process.env.OPENROUTER_API_KEY;
-
     try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://asicrepair.in",
-                "X-Title": "ASIC Admin Verifier"
-            },
-            body: JSON.stringify({
-                "model": "tngtech/deepseek-r1t2-chimera:free",
-                "messages": [{
-                    "role": "user",
-                    "content": `Verify outline. Return "VERIFIED" or issues.\n\nCONTEXT: ${researchContext.substring(0, 5000)}\n\nOUTLINE: ${outline}`
-                }]
-            })
-        });
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: AGENT_ROLES.ARCHITECT });
 
-        if (!response.ok) throw new Error(`Primary failed: ${response.status}`);
-        const data = await response.json();
-        return data.choices[0]?.message?.content || "Verified";
-
-    } catch (e) {
-        console.warn("Verifier Failed (Skipping to preserve flow):", e);
-        return "Verification Skipped (AI Provider Error). Proceeding with unverified outline.";
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+    } catch (error: any) {
+        console.error("Architect Failed:", error);
+        throw new Error(`Architect (${AGENT_ROLES.ARCHITECT}) Failed: ${error.message}`);
     }
 }
 
-// --- 3. FINAL WRITER (GROQ MIGRATION) ---
+// --- 2. FACT VERIFIER (GEMINI 2.5) ---
+async function runFactVerifier(outline: string, researchContext: string): Promise<string> {
+    console.log(`🕵️ [Verifier] ${AGENT_ROLES.VERIFIER} starting...`);
+    const apiKey = process.env[AI_CONFIG.GEMINI.API_KEY_ENV]; // Use Gemini Key
+    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+
+    // Optimization: We don't need the FULL 1M context for just verifying the outline structure.
+    // We can truncate to 50k chars to save processing time/latency.
+    // The Architect already did the heavy lifting.
+    const OPTIMIZED_CONTEXT_LIMIT = 50000;
+
+    const prompt = `
+    TASK: Verify this Blog Outline against the Research Context.
+    
+    RESEARCH CONTEXT (Truncated):
+    ${researchContext.substring(0, OPTIMIZED_CONTEXT_LIMIT)}
+
+    OUTLINE TO VERIFY:
+    ${outline}
+
+    INSTRUCTIONS:
+    1. Check if the H2/H3s match the research facts.
+    2. Check for any hallucinations (claims not in research).
+    3. Return "VERIFIED" if good.
+    4. If bad, list specific bullet points to fix.
+    `;
+
+    try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: AGENT_ROLES.VERIFIER });
+
+        const result = await model.generateContent(prompt);
+        return result.response.text();
+
+    } catch (e: any) {
+        console.warn("Verifier Failed (Skipping to preserve flow):", e);
+        return "Verification Skipped (AI Error).";
+    }
+}
+
+// --- 3. FINAL WRITER (GEMINI 2.5) ---
 async function runFinalWriter(topic: string, outline: string, researchContext: string, verification: string): Promise<string> {
-    console.log("✍️ [Writer] Groq Llama 3.3 starting...");
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("Missing GROQ_API_KEY");
+    console.log(`✍️ [Writer] ${AGENT_ROLES.WRITER} starting...`);
 
-    const groq = new Groq({ apiKey });
+    const apiKey = process.env[AI_CONFIG.GEMINI.API_KEY_ENV];
+    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
 
-    // STRICT RATE LIMIT PROTECTION
-    // Groq Limit: 12,000 Tokens/Minute.
-    // Goal: Use max ~6,000 Input Tokens to allow ~4,000 Output Tokens.
-    // 1 Token ~= 4 Chars. -> 6,000 Tokens ~= 24,000 Chars.
-    // Safety Buffer: Limit Context to 15,000 Chars (~3,750 Tokens).
-    const MAX_CONTEXT_CHARS = 15000;
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: AGENT_ROLES.WRITER });
+
+    // GEMINI SUPER POWER: 1 MILLION CONTEXT
+    // We pass almost everything. 
+    const MAX_CONTEXT_CHARS = 800000;
 
     const finalPrompt = `
     You are the FINAL WRITER.
@@ -107,11 +117,17 @@ async function runFinalWriter(topic: string, outline: string, researchContext: s
     OUTLINE: ${outline}
     VERIFICATION NOTES: ${verification}
     
-    RESEARCH DATA (Truncated for Rate Limits):
+    RESEARCH DATA:
     ${researchContext.substring(0, MAX_CONTEXT_CHARS)}
     
     TASK:
-    Write a High-Quality, Human-Like Blog Post (400 - 2000 words).
+    Write a High-Quality, Human-Like Blog Post (400 - 2000 words) with YAML Frontmatter.
+    
+    Start the response with a YAML Frontmatter block containing a focused SEO description (150-160 chars).
+    Example:
+    ---
+    description: "Learn how to diagnose Antminer S19 hashboard failures with this step-by-step guide. Fix 0 asic errors and overheat issues today."
+    ---
     
     STYLE & GOALS:
     1. **REPAIR CENTRIC**: You are an Expert ASIC Technician. Use correct industry jargon (e.g., "logs", "hashboards", "soldering", "diagnostics"). Be authoritative.
@@ -120,6 +136,9 @@ async function runFinalWriter(topic: string, outline: string, researchContext: s
        - ❌ Avoid AI fluff ("In the realm of...", "Unlock the potential...").
        - ✅ Write like a human speaking to a customer.
        - ✅ **GOAL**: Attract customers to our repair services/courses. solve their problem, then offer our help.
+       - 🔗 **MANDATORY INTERNAL LINKS**:
+         - You **MUST** include a link to "https://asicrepair.in/parts" when mentioning replacement parts (e.g., "Buy replacement fans here").
+         - You **MUST** include a link to "https://asicrepair.in/#repair" when mentioning complex diagnostics (e.g., "Book a professional repair").
     4. **LENGTH**: 400 - 2000 words (including space for human edits).
     
     STRUCTURE:
@@ -131,29 +150,11 @@ async function runFinalWriter(topic: string, outline: string, researchContext: s
     `;
 
     try {
-        const chatCompletion = await groq.chat.completions.create({
-            messages: [{ role: "user", content: finalPrompt }],
-            model: "llama-3.3-70b-versatile",
-            temperature: 0.7,
-            max_completion_tokens: 4096, // Allow long articles
-        });
-
-        return chatCompletion.choices[0]?.message?.content || "Failed to generate article content.";
+        const result = await model.generateContent(finalPrompt);
+        return result.response.text();
     } catch (e: any) {
-        console.error("Writer (Groq) Failed:", e);
-        // Fallback: If 70b fails (limit?), try 8b (faster/cheaper)
-        try {
-            console.log("⚠️ Switching to Llama 3.1 8b Fallback...");
-            const fallbackCompletion = await groq.chat.completions.create({
-                messages: [{ role: "user", content: finalPrompt }],
-                model: "llama-3.1-8b-instant",
-                temperature: 0.7,
-                max_completion_tokens: 4096,
-            });
-            return fallbackCompletion.choices[0]?.message?.content || "Failed to generate fallback article.";
-        } catch (fallbackErr) {
-            throw new Error(`Groq Writer Failed (Primary & Fallback): ${e.message}`);
-        }
+        console.error("Writer (Gemini) Failed:", e);
+        throw new Error(`Writer Failed: ${e.message}`);
     }
 }
 
@@ -163,13 +164,13 @@ export async function runCommittee(topic: string, researchContext: string): Prom
     let verification = "";
 
     try {
-        // 1. Architect (Groq - Usually Reliable)
+        // 1. Architect 
         outline = await runSeoArchitect(topic, researchContext);
 
         // 2. Verifier (Soft Fail)
         verification = await runFactVerifier(outline, researchContext);
 
-        // 3. Writer (With Fallback)
+        // 3. Writer
         const finalArticle = await runFinalWriter(topic, outline, researchContext, verification);
 
         return { seoOutline: outline, verificationNotes: verification, finalArticle };
@@ -177,13 +178,13 @@ export async function runCommittee(topic: string, researchContext: string): Prom
     } catch (e: any) {
         console.error("Committee Critical Failure:", e);
 
-        // RECOVERY: If we at least have the outline, return that!
+        // Recovery: If Outline exists, return it safely.
         if (outline) {
             return {
                 seoOutline: outline,
                 verificationNotes: verification || "Skipped",
-                finalArticle: `## ⚠️ AI Writer Quota Exceeded\n\n**The system generated the outline successfully, but the Writer AI is currently overloaded.**\n\n### Generated Outline:\n${outline}\n\n*Please copy this outline and use it manually, or try again in 10 minutes.*`,
-                error: "Writer Failed, Outline Preserved."
+                finalArticle: `## ⚠️ AI Writer Failed\n\n**The Writer AI encountered an error.**\n\n### Generated Outline:\n${outline}\n\n*Error: ${e.message}*`,
+                error: e.message
             };
         }
 

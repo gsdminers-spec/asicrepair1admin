@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { fetchRecentTopics, saveArticle, uploadImage } from '@/lib/articleActions';
+import { fetchFullBlogTree } from '@/lib/blogTreeActions';
 import { Topic } from '@/lib/supabase';
 import { Skeleton } from './ui/Skeleton';
 
@@ -40,8 +41,38 @@ export default function ClaudeOutput() {
     // Fix: Move function declaration before useEffect to avoid React Hook violation
     const loadTopics = async () => {
         setStatus('loading');
-        const data = await fetchRecentTopics();
-        setTopics(data);
+
+        // 1. Fetch Pending from Tree (Same logic as Writer Studio)
+        const tree = await fetchFullBlogTree();
+        const allTreeTopics: Topic[] = [];
+
+        // Use type assertion to handle the complex nested structure including topics
+        (tree as any[]).forEach(phase => {
+            phase.categories.forEach((cat: any) => {
+                if (cat.topics) allTreeTopics.push(...cat.topics);
+                if (cat.subcategories) {
+                    cat.subcategories.forEach((sub: any) => {
+                        if (sub.topics) allTreeTopics.push(...sub.topics);
+                    });
+                }
+            });
+        });
+
+        // Filter for PENDING topics only (from Tree)
+        const pendingTopics = allTreeTopics.filter(t => t.status === 'pending' || t.status === 'in-progress');
+
+        // 2. Fetch History (Last 50 Done) - Keep existing logic for history
+        const { data: historyData } = await import('@/lib/supabase').then(m => m.supabase
+            .from('topics')
+            .select('*')
+            .eq('status', 'done')
+            .order('created_at', { ascending: false })
+            .limit(50)
+        );
+
+        // 3. Combine
+        // We prioritize the Tree's Pending list, then append History
+        setTopics([...pendingTopics, ...(historyData || [])]);
         setStatus('idle');
     };
 
@@ -62,7 +93,7 @@ export default function ClaudeOutput() {
         setStatus('saving');
         setErrorMessage('');
 
-        const result = await saveArticle(selectedTopicId, selectedTopicTitle, content);
+        const result = await saveArticle(selectedTopicId, selectedTopicTitle, content, undefined, 'draft');
 
         if (result.success) {
             setStatus('saved');
@@ -81,7 +112,7 @@ export default function ClaudeOutput() {
     };
 
     return (
-        <div className="flex flex-col gap-6 h-full max-w-4xl mx-auto">
+        <div className="flex flex-col gap-6 md:h-full max-w-4xl mx-auto">
 
             {/* Introduction Card */}
             <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 flex items-start gap-3">
@@ -214,7 +245,7 @@ Content goes here..."
                             onClick={handleSave}
                             disabled={!selectedTopicId || !content || status === 'saving'}
                         >
-                            {status === 'saving' ? '💾 Saving...' : status === 'saved' ? '✅ Saved Successfully!' : '✅ Add to Articles'}
+                            {status === 'saving' ? '💾 Saving...' : status === 'saved' ? '✅ Sent to SEO!' : '📥 Add to SEO Staging'}
                         </button>
                     </div>
                 </div>
