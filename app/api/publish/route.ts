@@ -195,10 +195,11 @@ export async function POST(request: Request) {
         const repoName = process.env.GITHUB_REPO_NAME || 'asicrepair.in';
         const workflowFile = 'deploy.yml';
 
+        let deploymentTriggered = false;
+        let deploymentError: string | null = null;
+
         if (githubToken) {
             try {
-                // We don't await this to keep the UI snappy - fire and forget (or await if you want confirmation)
-                // Better to await to catch errors, but keep it inside this try/catch block so DB success isn't blocked.
                 const deployResponse = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}/actions/workflows/${workflowFile}/dispatches`, {
                     method: 'POST',
                     headers: {
@@ -207,24 +208,33 @@ export async function POST(request: Request) {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        ref: 'main', // The branch to deploy
+                        ref: 'main',
                     }),
                 });
 
-                if (deployResponse.ok) {
+                if (deployResponse.ok || deployResponse.status === 204) {
                     console.log(`🚀 Deployment triggered successfully for ${repoOwner}/${repoName}`);
+                    deploymentTriggered = true;
                 } else {
                     const errorText = await deployResponse.text();
                     console.error(`⚠️ Failed to trigger deployment: ${deployResponse.status} ${errorText}`);
+                    deploymentError = `GitHub API returned ${deployResponse.status}: ${errorText}`;
                 }
             } catch (deployError) {
                 console.error('⚠️ Deployment trigger exception:', deployError);
+                deploymentError = deployError instanceof Error ? deployError.message : 'Unknown error';
             }
         } else {
             console.log('ℹ️ GITHUB_PAT not found. Skipping automated deployment trigger.');
+            deploymentError = 'GITHUB_PAT environment variable not set';
         }
 
-        return NextResponse.json({ success: true, slug });
+        return NextResponse.json({
+            success: true,
+            slug,
+            deploymentTriggered,
+            deploymentError
+        });
 
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

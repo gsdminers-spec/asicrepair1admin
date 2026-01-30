@@ -89,16 +89,22 @@ export default function ArticlesManager({ onNavigateToPublish }: { onNavigateToP
         const publishResult = await publishNow(moveResult.queueId, schedulingArticle.id);
 
         if (publishResult.success) {
-            alert(`${schedulingArticle.title} has been successfully PUBLISHED! 🚀`);
+            let message = `${schedulingArticle.title} has been successfully PUBLISHED! 🚀`;
+            if (publishResult.deploymentTriggered) {
+                message += '\n\n✅ Website rebuild triggered! Changes will be live in ~3 minutes.';
+            } else if (publishResult.deploymentError) {
+                message += `\n\n⚠️ Website rebuild NOT triggered: ${publishResult.deploymentError}`;
+            }
+            alert(message);
             setSchedulingArticle(null);
             loadArticles();
             onNavigateToPublish();
         } else {
             alert(`Moved to queue, but immediate publish failed: ${publishResult.error}`);
+            setSchedulingArticle(null);
+            loadArticles();
+            onNavigateToPublish();
         }
-        setSchedulingArticle(null);
-        loadArticles();
-        onNavigateToPublish();
     };
 
     // Unpublish - remove from public blog but keep in admin
@@ -107,7 +113,13 @@ export default function ArticlesManager({ onNavigateToPublish }: { onNavigateToP
 
         const result = await unpublishArticle(article.id);
         if (result.success) {
-            alert(`${article.title} has been unpublished!`);
+            let message = `${article.title} has been unpublished!`;
+            if (result.deploymentTriggered) {
+                message += '\n\n🚀 Website rebuild triggered! Changes will be live in ~3 minutes.';
+            } else if (result.deploymentError) {
+                message += `\n\n⚠️ Website rebuild NOT triggered: ${result.deploymentError}`;
+            }
+            alert(message);
             setViewingArticle(null);
             loadArticles();
         } else {

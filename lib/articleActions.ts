@@ -150,7 +150,7 @@ export async function moveToPublish(
 }
 
 // Unpublish article - removes from public blog but keeps in admin
-export async function unpublishArticle(articleId: string): Promise<{ success: boolean; error?: string }> {
+export async function unpublishArticle(articleId: string): Promise<{ success: boolean; error?: string; deploymentTriggered?: boolean; deploymentError?: string | null }> {
     try {
         const response = await fetch('/api/articles/unpublish', {
             method: 'POST',
@@ -167,7 +167,11 @@ export async function unpublishArticle(articleId: string): Promise<{ success: bo
         // Log activity
         await import('./logger').then(l => l.logActivity('UPDATE', 'Article', `Unpublished article ID: ${articleId}`));
 
-        return { success: true };
+        return {
+            success: true,
+            deploymentTriggered: result.deploymentTriggered,
+            deploymentError: result.deploymentError
+        };
     } catch (err: any) {
         console.error('Error unpublishing article:', err);
         return { success: false, error: err.message };
